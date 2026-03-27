@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type ControlMode = "lucky_draw" | "auction";
 
@@ -17,7 +17,7 @@ export default function AdminPage() {
   const canReveal = useMemo(() => Boolean(eventId && prizeCategoryId && drawSessionId && ticketNumber), [eventId, prizeCategoryId, drawSessionId, ticketNumber]);
   const canBid = useMemo(() => Boolean(eventId && lotId && bid), [eventId, lotId, bid]);
 
-  async function reveal() {
+  const reveal = useCallback(async () => {
     if (!canReveal) return;
     setStatus("Publishing reveal...");
     const response = await fetch("/api/lucky-draw/reveal", {
@@ -33,9 +33,9 @@ export default function AdminPage() {
 
     setTicketNumber("");
     setStatus("Winner revealed");
-  }
+  }, [canReveal, drawSessionId, eventId, prizeCategoryId, ticketNumber]);
 
-  async function submitBid() {
+  const submitBid = useCallback(async () => {
     if (!canBid) return;
     setStatus("Publishing bid...");
     const response = await fetch("/api/auction/bid", {
@@ -51,7 +51,7 @@ export default function AdminPage() {
 
     setBid("");
     setStatus("Bid broadcasted");
-  }
+  }, [bid, canBid, eventId, lotId]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -82,7 +82,7 @@ export default function AdminPage() {
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mode, canReveal, canBid, ticketNumber, bid, eventId, prizeCategoryId, drawSessionId, lotId]);
+  }, [mode, reveal, submitBid]);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 p-8">

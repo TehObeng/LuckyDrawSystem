@@ -11,6 +11,23 @@ const defaultTheme = {
   overlayMode: false,
 };
 
+const animationPresets = new Set<LuckyDrawPublicState["animationPreset"]>([
+  "scramble",
+  "rolling",
+  "slot",
+  "flip",
+  "zoom",
+  "fade_pop",
+]);
+
+function toAnimationPreset(value: string | null | undefined): LuckyDrawPublicState["animationPreset"] {
+  if (value && animationPresets.has(value as LuckyDrawPublicState["animationPreset"])) {
+    return value as LuckyDrawPublicState["animationPreset"];
+  }
+
+  return "fade_pop";
+}
+
 export async function revealWinner(input: LuckyDrawRevealInput) {
   const payload = luckyDrawRevealSchema.parse(input);
 
@@ -73,7 +90,7 @@ export async function revealWinner(input: LuckyDrawRevealInput) {
     latestWinningNumber: payload.ticketNumber,
     winners: winners.map((w) => w.ticketNumber),
     layoutMode: session.layoutMode,
-    animationPreset: session.animationPresetOverride ?? prize.animationPreset,
+    animationPreset: toAnimationPreset(session.animationPresetOverride ?? prize.animationPreset),
     status: "revealed",
     updatedAt: new Date().toISOString(),
     theme: defaultTheme,
