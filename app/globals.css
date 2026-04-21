@@ -4,12 +4,94 @@
 
 :root {
   color-scheme: dark;
+  --app-bg: #050816;
+  --app-panel: rgba(9, 14, 29, 0.78);
+  --app-panel-strong: rgba(10, 16, 34, 0.95);
+  --app-border: rgba(148, 163, 184, 0.16);
+  --text-primary: #f8fafc;
+  --text-secondary: #a8b2c7;
+  --accent-mint: #34d399;
+  --accent-coral: #fb7185;
+  --accent-gold: #fbbf24;
+  --accent-cyan: #38bdf8;
+  --font-ui: "Segoe UI", "Aptos", "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Bahnschrift", "Arial Narrow", "Trebuchet MS", sans-serif;
+}
+
+* {
+  @apply border-slate-800;
+}
+
+html {
+  @apply bg-slate-950;
 }
 
 body {
-  @apply bg-slate-950 text-slate-100 antialiased;
+  @apply antialiased;
+  background:
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent 30%),
+    radial-gradient(circle at top right, rgba(251, 191, 36, 0.1), transparent 28%),
+    linear-gradient(180deg, #060917 0%, #030712 100%);
+  font-family: var(--font-ui), sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display), sans-serif;
+}
+
+a,
+button,
+input,
+select,
+textarea {
+  @apply outline-none ring-offset-0 transition duration-200;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  @apply ring-2 ring-emerald-400 ring-offset-0;
+}
+
+::selection {
+  @apply bg-emerald-300/25 text-white;
+}
+
+.app-shell {
+  @apply min-h-screen;
+}
+
+.panel {
+  @apply rounded-[1.65rem] border border-white/10 bg-[var(--app-panel)] shadow-stage backdrop-blur-xl;
+}
+
+.panel-strong {
+  @apply rounded-[1.85rem] border border-white/10 bg-[var(--app-panel-strong)] shadow-stage backdrop-blur-xl;
+}
+
+.grid-glow {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
+  background-size: 72px 72px;
+}
+
+.display-noise::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 20px 20px;
+  mix-blend-mode: soft-light;
+  opacity: 0.18;
 }
 
 .card {
-  @apply rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/20;
+  @apply panel p-5;
 }

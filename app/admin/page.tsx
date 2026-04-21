@@ -1,125 +1,205 @@
-"use client";
-
-import { useCallback, useEffect, useMemo, useState } from "react";
-
-type ControlMode = "lucky_draw" | "auction";
-
-export default function AdminPage() {
-  const [mode, setMode] = useState<ControlMode>("lucky_draw");
-  const [eventId, setEventId] = useState("");
-  const [prizeCategoryId, setPrizeCategoryId] = useState("");
-  const [drawSessionId, setDrawSessionId] = useState("");
-  const [ticketNumber, setTicketNumber] = useState("");
-  const [lotId, setLotId] = useState("");
-  const [bid, setBid] = useState("");
-  const [status, setStatus] = useState("Idle");
-
-  const canReveal = useMemo(() => Boolean(eventId && prizeCategoryId && drawSessionId && ticketNumber), [eventId, prizeCategoryId, drawSessionId, ticketNumber]);
-  const canBid = useMemo(() => Boolean(eventId && lotId && bid), [eventId, lotId, bid]);
-
-  const reveal = useCallback(async () => {
-    if (!canReveal) return;
-    setStatus("Publishing reveal...");
-    const response = await fetch("/api/lucky-draw/reveal", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ eventId, prizeCategoryId, drawSessionId, ticketNumber }),
-    });
-
-    if (!response.ok) {
-      setStatus("Reveal failed");
-      return;
-    }
-
-    setTicketNumber("");
-    setStatus("Winner revealed");
-  }, [canReveal, drawSessionId, eventId, prizeCategoryId, ticketNumber]);
-
-  const submitBid = useCallback(async () => {
-    if (!canBid) return;
-    setStatus("Publishing bid...");
-    const response = await fetch("/api/auction/bid", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ eventId, lotId, amount: Number(bid) }),
-    });
-
-    if (!response.ok) {
-      setStatus("Bid failed");
-      return;
-    }
-
-    setBid("");
-    setStatus("Bid broadcasted");
-  }, [bid, canBid, eventId, lotId]);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      if (mode === "lucky_draw") {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          void reveal();
-        }
-      } else {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          void submitBid();
-        }
-        if (key === "s") setStatus("Sold action can be wired here");
-        if (key === "p") setStatus("Passed action can be wired here");
-      }
-
-      if ((event.metaKey || event.ctrlKey) && key === "z") {
-        setStatus("Undo action can be wired here");
-      }
-
-      if (event.key === "Escape") {
-        setTicketNumber("");
-        setBid("");
-      }
-    };
-
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [mode, reveal, submitBid]);
+import type { Route } from "next";
+import Link from "next/link";
+import { ArrowRight, Clock3, LayoutTemplate, MonitorPlay, Sparkles, TimerReset } from "lucide-react";
+import { PageHeader } from "@/components/admin/page-header";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Surface, SurfaceCopy, SurfaceTitle } from "@/components/ui/surface";
+import { parseEventSettings } from "@/modules/shared/services/display-state-service";
+import { getWorkspaceSnapshot } from "@/modules/shared/services/workspace-query-service";
+import { formatDateTime } from "@/modules/shared/utils/formatters";
+export default async function AdminOverviewPage({ searchParams }: { searchParams: Promise<{ event?: string }> }) {
+  const { event } = await searchParams;
+  const workspace = await getWorkspaceSnapshot(event);
+  const selectedEvent = workspace.selectedEvent;
+  const settings = selectedEvent ? parseEventSettings(selectedEvent.settings) : null;
+  const luckyDrawSessionCount = selectedEvent
+    ? selectedEvent.prizeCategories.reduce((total, prize) => total + prize.drawSessions.length, 0)
+    : 0;
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 p-8">
-      <header className="card">
-        <h1 className="text-3xl font-semibold">Live Event Operator Dashboard</h1>
-        <p className="text-sm text-slate-400">Keyboard-first control panel for stage operations and real-time output sync.</p>
-      </header>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Operations Workspace"
+        title="Control the room from a single surface"
+        description="Monitor event state, jump into live control, and keep both public displays synchronized for projector, LED wall, and browser-source output."
+      />
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <label className="card">
-          <span className="mb-2 block text-sm text-slate-400">Control mode</span>
-          <select value={mode} onChange={(e) => setMode(e.target.value as ControlMode)} className="w-full rounded-lg bg-slate-800 p-2">
-            <option value="lucky_draw">Lucky Draw</option>
-            <option value="auction">Auction</option>
-          </select>
-        </label>
-        <label className="card">
-          <span className="mb-2 block text-sm text-slate-400">Event ID</span>
-          <input value={eventId} onChange={(e) => setEventId(e.target.value)} className="w-full rounded-lg bg-slate-800 p-2" placeholder="cuid" />
-        </label>
-        <div className="card text-sm text-cyan-300">Status: {status}</div>
-      </section>
-
-      {mode === "lucky_draw" ? (
-        <section className="grid gap-4 md:grid-cols-2">
-          <label className="card"><span>Prize Category ID</span><input value={prizeCategoryId} onChange={(e) => setPrizeCategoryId(e.target.value)} className="mt-2 w-full rounded-lg bg-slate-800 p-2" /></label>
-          <label className="card"><span>Draw Session ID</span><input value={drawSessionId} onChange={(e) => setDrawSessionId(e.target.value)} className="mt-2 w-full rounded-lg bg-slate-800 p-2" /></label>
-          <label className="card md:col-span-2"><span>Winning Number (manual stage-driven)</span><input value={ticketNumber} onChange={(e) => setTicketNumber(e.target.value)} className="mt-2 w-full rounded-lg bg-slate-800 p-2 text-2xl font-semibold" /></label>
-          <button onClick={() => void reveal()} className="rounded-xl bg-cyan-500 px-4 py-3 font-semibold text-slate-950 disabled:opacity-50" disabled={!canReveal}>Reveal Winner (Enter)</button>
-        </section>
+      {!selectedEvent ? (
+        <Surface className="space-y-4">
+          <SurfaceTitle>No active event yet</SurfaceTitle>
+          <SurfaceCopy>Create the first event to unlock the live control workspace, themed public displays, and import/export tools.</SurfaceCopy>
+          <Button asChild>
+            <Link href={"/admin/events" as Route}>Open Event Setup</Link>
+          </Button>
+        </Surface>
       ) : (
-        <section className="grid gap-4 md:grid-cols-2">
-          <label className="card"><span>Auction Lot ID</span><input value={lotId} onChange={(e) => setLotId(e.target.value)} className="mt-2 w-full rounded-lg bg-slate-800 p-2" /></label>
-          <label className="card"><span>New Bid Amount</span><input value={bid} onChange={(e) => setBid(e.target.value)} className="mt-2 w-full rounded-lg bg-slate-800 p-2 text-2xl font-semibold" inputMode="numeric" /></label>
-          <button onClick={() => void submitBid()} className="rounded-xl bg-orange-500 px-4 py-3 font-semibold text-slate-950 disabled:opacity-50" disabled={!canBid}>Confirm Bid (Enter)</button>
-        </section>
+        <>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <Surface>
+              <Badge variant="accent">Prizes</Badge>
+              <SurfaceTitle className="mt-4 text-3xl">{selectedEvent.prizeCategories.length}</SurfaceTitle>
+              <SurfaceCopy>Configured lucky draw prize categories</SurfaceCopy>
+            </Surface>
+            <Surface>
+              <Badge variant="success">Sessions</Badge>
+              <SurfaceTitle className="mt-4 text-3xl">{luckyDrawSessionCount + selectedEvent.auctionSessions.length}</SurfaceTitle>
+              <SurfaceCopy>Draw sessions and auction blocks ready for stage flow</SurfaceCopy>
+            </Surface>
+            <Surface>
+              <Badge variant="warning">Active Lots</Badge>
+              <SurfaceTitle className="mt-4 text-3xl">{selectedEvent.auctionLots.filter((lot) => lot.status === "live").length}</SurfaceTitle>
+              <SurfaceCopy>Auction lots currently in live or pending status</SurfaceCopy>
+            </Surface>
+            <Surface>
+              <Badge variant="neutral">Audit</Badge>
+              <SurfaceTitle className="mt-4 text-3xl">{workspace.displayStates.length}</SurfaceTitle>
+              <SurfaceCopy>Tracked display outputs and last-known revisions</SurfaceCopy>
+            </Surface>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+            <Surface className="space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-2">
+                  <Badge variant="success">Selected Event</Badge>
+                  <SurfaceTitle>{selectedEvent.name}</SurfaceTitle>
+                  <SurfaceCopy>
+                    {formatDateTime(selectedEvent.date, selectedEvent.locale)} | {selectedEvent.currencyCode} | Duplicate policy {selectedEvent.duplicatePolicy}
+                  </SurfaceCopy>
+                </div>
+                <Button asChild variant="secondary">
+                  <Link href={`/admin/live?event=${selectedEvent.id}` as Route}>
+                    Open Live Control
+                    <ArrowRight className="size-4" />
+                  </Link>
+                </Button>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
+                  <div className="flex items-center gap-3 text-slate-200">
+                    <Sparkles className="size-4 text-emerald-300" />
+                    <span className="font-medium">Lucky Draw Display</span>
+                  </div>
+                  <p className="mt-3 text-sm text-slate-400">Clean public route for projector or OBS browser source.</p>
+                  <Link className="mt-4 inline-flex text-sm font-semibold text-emerald-300 hover:text-emerald-200" href={`/display/lucky-draw/${selectedEvent.slug}` as Route}>
+                    /display/lucky-draw/{selectedEvent.slug}
+                  </Link>
+                </div>
+                <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
+                  <div className="flex items-center gap-3 text-slate-200">
+                    <MonitorPlay className="size-4 text-amber-300" />
+                    <span className="font-medium">Auction Display</span>
+                  </div>
+                  <p className="mt-3 text-sm text-slate-400">Stage-safe live auction layout with bid transitions and sold/passed states.</p>
+                  <Link className="mt-4 inline-flex text-sm font-semibold text-amber-300 hover:text-amber-200" href={`/display/auction/${selectedEvent.slug}` as Route}>
+                    /display/auction/{selectedEvent.slug}
+                  </Link>
+                </div>
+                <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
+                  <div className="flex items-center gap-3 text-slate-200">
+                    <LayoutTemplate className="size-4 text-sky-300" />
+                    <span className="font-medium">Master Overlay</span>
+                  </div>
+                  <p className="mt-3 text-sm text-slate-400">Switchable output that mirrors lucky draw or auction for OBS, LED processors, or stage confidence monitors.</p>
+                  <Link className="mt-4 inline-flex text-sm font-semibold text-sky-300 hover:text-sky-200" href={`/display/master/${selectedEvent.slug}` as Route}>
+                    /display/master/{selectedEvent.slug}
+                  </Link>
+                </div>
+              </div>
+            </Surface>
+
+            <Surface className="space-y-5">
+              <SurfaceTitle>Output health</SurfaceTitle>
+              <div className="space-y-3">
+                {workspace.displayStates.length === 0 ? (
+                  <SurfaceCopy>No display state snapshots have been published for this event yet.</SurfaceCopy>
+                ) : (
+                  workspace.displayStates.map((state) => {
+                    const payload = state.payload as { scene?: string; publishedAt?: string };
+                    return (
+                      <div key={state.id} className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-slate-100">{state.screen.name}</p>
+                            <p className="text-sm text-slate-400">{state.screen.screenKey}</p>
+                          </div>
+                          <Badge variant="accent">rev {state.revision}</Badge>
+                        </div>
+                        <div className="mt-3 flex items-center gap-3 text-sm text-slate-400">
+                          <Clock3 className="size-4" />
+                          <span>{payload.scene ?? state.status}</span>
+                          <span>|</span>
+                          <span>{formatDateTime(payload.publishedAt ?? state.syncedAt, selectedEvent.locale)}</span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </Surface>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+            <Surface className="space-y-5">
+              <div className="flex items-center gap-3">
+                <TimerReset className="size-4 text-emerald-300" />
+                <SurfaceTitle>Recent audit</SurfaceTitle>
+              </div>
+              <div className="space-y-3">
+                {selectedEvent.auditLogs.map((log) => (
+                  <div key={log.id} className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium text-slate-100">{log.actionType.replace(/_/g, " ")}</p>
+                      <Badge>{log.moduleType ?? "shared"}</Badge>
+                    </div>
+                    <p className="mt-2 text-sm text-slate-400">{log.actor}</p>
+                    <p className="mt-3 text-xs uppercase tracking-[0.24em] text-slate-500">{formatDateTime(log.createdAt, selectedEvent.locale)}</p>
+                  </div>
+                ))}
+              </div>
+            </Surface>
+
+            <Surface className="space-y-5">
+              <SurfaceTitle>Next actions</SurfaceTitle>
+              {settings ? (
+                <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300">
+                  Master source: <span className="font-semibold capitalize text-slate-50">{settings.activeMasterSource.replace("_", " ")}</span> | Confirmations:{" "}
+                  <span className="font-semibold text-slate-50">{settings.requireActionConfirmations ? "on" : "off"}</span> | Route copy buttons:{" "}
+                  <span className="font-semibold text-slate-50">{settings.showRouteCopyButtons ? "on" : "off"}</span>
+                </div>
+              ) : null}
+              <div className="grid gap-4 md:grid-cols-2">
+                <Link href={`/admin/themes?event=${selectedEvent.id}` as Route} className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4 transition hover:border-emerald-300/30 hover:bg-white/[0.05]">
+                  <p className="font-medium text-slate-50">Tune branding</p>
+                  <p className="mt-2 text-sm text-slate-400">Assign background imagery, overlay-safe treatments, and typography colors.</p>
+                </Link>
+                <Link href={`/admin/settings?event=${selectedEvent.id}` as Route} className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4 transition hover:border-sky-300/30 hover:bg-white/[0.05]">
+                  <p className="font-medium text-slate-50">Set output defaults</p>
+                  <p className="mt-2 text-sm text-slate-400">Choose the master overlay source, operator safeguards, and stage ergonomics.</p>
+                </Link>
+                <Link href={`/admin/imports?event=${selectedEvent.id}` as Route} className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4 transition hover:border-emerald-300/30 hover:bg-white/[0.05]">
+                  <p className="font-medium text-slate-50">Import stage data</p>
+                  <p className="mt-2 text-sm text-slate-400">Load ticket pool CSVs or auction lot lists before rehearsal and show time.</p>
+                </Link>
+                <Link href={`/admin/lucky-draw?event=${selectedEvent.id}` as Route} className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4 transition hover:border-emerald-300/30 hover:bg-white/[0.05]">
+                  <p className="font-medium text-slate-50">Prepare draw sessions</p>
+                  <p className="mt-2 text-sm text-slate-400">Split categories into stage-ready sessions and set exclusive or grid scenes.</p>
+                </Link>
+                <Link href={`/admin/auction?event=${selectedEvent.id}` as Route} className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4 transition hover:border-emerald-300/30 hover:bg-white/[0.05]">
+                  <p className="font-medium text-slate-50">Sequence lots</p>
+                  <p className="mt-2 text-sm text-slate-400">Order live lots, assign display titles, and define opening bids or increments.</p>
+                </Link>
+                <Link href={`/admin/debug?event=${selectedEvent.id}` as Route} className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4 transition hover:border-amber-300/30 hover:bg-white/[0.05]">
+                  <p className="font-medium text-slate-50">Run diagnostics</p>
+                  <p className="mt-2 text-sm text-slate-400">Verify route health, recent display revisions, and API smoke targets.</p>
+                </Link>
+              </div>
+            </Surface>
+          </div>
+        </>
       )}
-    </main>
+    </div>
   );
 }

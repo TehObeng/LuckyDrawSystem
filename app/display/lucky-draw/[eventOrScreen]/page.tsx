@@ -1,25 +1,21 @@
 import { LuckyDrawDisplay } from "@/modules/lucky-draw/components/lucky-draw-display";
-import type { LuckyDrawPublicState } from "@/modules/shared/types/contracts";
+import { getPublicDisplayState, getResolvedDisplayScreen, parseEventSettings } from "@/modules/shared/services/display-state-service";
+import { notFound } from "next/navigation";
+
+export const dynamic = "force-dynamic";
 
 export default async function LuckyDrawDisplayPage({ params }: { params: Promise<{ eventOrScreen: string }> }) {
   const { eventOrScreen } = await params;
+  const [state, screen] = await Promise.all([
+    getPublicDisplayState("lucky_draw", eventOrScreen),
+    getResolvedDisplayScreen("lucky_draw", eventOrScreen),
+  ]);
 
-  const initialState: LuckyDrawPublicState = {
-    moduleType: "lucky_draw",
-    eventSlug: eventOrScreen,
-    prizeName: "Ready",
-    winners: [],
-    layoutMode: "grid",
-    animationPreset: "fade_pop",
-    status: "idle",
-    updatedAt: new Date().toISOString(),
-    theme: {
-      backgroundType: "color",
-      accentColor: "#22d3ee",
-      textColor: "#ffffff",
-      overlayMode: false,
-    },
-  };
+  if (!state || state.moduleType !== "lucky_draw" || !screen) {
+    notFound();
+  }
 
-  return <LuckyDrawDisplay initialState={initialState} />;
+  const settings = parseEventSettings(screen.event.settings);
+
+  return <LuckyDrawDisplay eventOrScreen={eventOrScreen} initialState={state} pollingIntervalMs={settings.fallbackPollingIntervalMs} />;
 }

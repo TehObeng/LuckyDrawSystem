@@ -1,39 +1,62 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { DisplayFrame } from "@/modules/shared/components/display-frame";
 import { useRealtimeDisplay } from "@/modules/shared/components/use-realtime-display";
-import type { LuckyDrawPublicState } from "@/modules/shared/types/contracts";
+import { LuckyDrawDisplayContent } from "@/modules/lucky-draw/components/lucky-draw-display-content";
+import type { LuckyDrawDisplayEnvelope } from "@/modules/shared/types/contracts";
 
-export function LuckyDrawDisplay({ initialState }: { initialState: LuckyDrawPublicState }) {
-  const state = useRealtimeDisplay("lucky_draw", initialState.eventSlug, initialState);
+export function LuckyDrawDisplay({
+  initialState,
+  eventOrScreen,
+  pollingIntervalMs,
+  viewMode = "session",
+}: {
+  initialState: LuckyDrawDisplayEnvelope;
+  eventOrScreen: string;
+  pollingIntervalMs?: number;
+  viewMode?: "session" | "prize";
+}) {
+  const state = useRealtimeDisplay("lucky_draw", eventOrScreen, initialState, pollingIntervalMs);
+
+  if (viewMode === "prize") {
+    return (
+      <main className="min-h-screen w-full" style={{ backgroundColor: "#000000" }}>
+        <LuckyDrawDisplayContent state={state} variant="prize" />
+      </main>
+    );
+  }
+
+  const progress = state.progress;
+  const progressLabel = progress.planned > 0 ? `${progress.actual} / ${progress.planned} revealed` : `${progress.actual} revealed`;
+  const title = state.prizeName ?? "Lucky Draw Ready";
+  const subtitle = state.cue;
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-8 p-8 text-center" style={{ color: state.theme.textColor }}>
-      <p className="text-lg uppercase tracking-[0.3em] text-cyan-300">Lucky Draw</p>
-      <h1 className="text-4xl font-semibold">{state.prizeName ?? "Waiting for reveal"}</h1>
-      {state.layoutMode === "exclusive" ? (
-        <motion.div
-          key={state.latestWinningNumber}
-          initial={{ scale: 0.6, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="rounded-2xl border border-cyan-300/40 bg-slate-900/60 px-12 py-6 text-7xl font-bold"
-        >
-          {state.latestWinningNumber ?? "----"}
-        </motion.div>
-      ) : (
-        <div className="grid w-full max-w-5xl grid-cols-2 gap-4 md:grid-cols-5">
-          {state.winners.map((winner, index) => (
-            <motion.div
-              key={`${winner}-${index}`}
-              initial={{ opacity: 0.5, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={`rounded-xl border p-4 text-3xl font-semibold ${index === state.winners.length - 1 ? "border-cyan-300 bg-cyan-500/15" : "border-slate-700"}`}
-            >
-              {winner}
-            </motion.div>
-          ))}
+    <DisplayFrame
+      moduleLabel="Lucky Draw"
+      title={title}
+      subtitle={subtitle}
+      sceneLabel={state.scene}
+      displayMode={state.displayMode}
+      theme={state.theme}
+      meta={
+        <div className="space-y-3 text-sm text-white/80">
+          <div className="flex items-center justify-between gap-4">
+            <span className="uppercase tracking-[0.26em] text-white/58">Mode</span>
+            <span className="font-semibold capitalize text-white">{state.layoutMode}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="uppercase tracking-[0.26em] text-white/58">Progress</span>
+            <span className="font-semibold text-white">{progressLabel}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="uppercase tracking-[0.26em] text-white/58">Animation</span>
+            <span className="font-semibold text-white">{state.animationPreset.replace("_", " ")}</span>
+          </div>
         </div>
-      )}
-    </main>
+      }
+    >
+      <LuckyDrawDisplayContent state={state} variant={viewMode} />
+    </DisplayFrame>
   );
 }

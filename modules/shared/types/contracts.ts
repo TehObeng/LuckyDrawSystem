@@ -1,39 +1,73 @@
-export type ModuleType = "lucky_draw" | "auction";
+export type {
+  AuctionDisplayEnvelope,
+  AuctionScene,
+  LiveDisplayEnvelope,
+  LuckyDrawDisplayEnvelope,
+  LuckyDrawScene,
+  MasterDisplayEnvelope,
+  MasterScene,
+} from "@/modules/shared/schemas/display";
+export {
+  auctionDisplaySchema,
+  auctionSceneSchema,
+  liveDisplayEnvelopeSchema,
+  luckyDrawDisplaySchema,
+  luckyDrawSceneSchema,
+  masterDisplaySchema,
+  masterSceneSchema,
+} from "@/modules/shared/schemas/display";
+export type {
+  EventSettings,
+  PrizeBoardSettings,
+  ThemeSettings as ThemeConfig,
+  TicketFormatSettings,
+} from "@/modules/shared/schemas/platform";
+export {
+  backgroundColorModeSchema,
+  backgroundTypeSchema,
+  backgroundFitSchema,
+  backgroundPositionSchema,
+  contentAlignmentSchema,
+  defaultEventSettings,
+  defaultPrizeBoardSettings,
+  defaultThemeSettings,
+  defaultTicketFormat,
+  displayModeSchema,
+  duplicatePolicySchema,
+  eventSettingsSchema,
+  heroImageBehaviorSchema,
+  layoutModeSchema,
+  logoPositionSchema,
+  luckyDrawAnimationPresetSchema,
+  masterDisplaySourceSchema,
+  moduleTypeSchema,
+  operatorRoleSchema,
+  panelStyleSchema,
+  prizeBoardSettingsSchema,
+  themeSettingsSchema,
+  ticketFormatSchema,
+} from "@/modules/shared/schemas/platform";
 
-export type DisplayStatus = "idle" | "ready" | "revealing" | "revealed" | "sold" | "passed" | "session_complete";
+export type ModuleType = "lucky_draw" | "auction" | "master";
+export type LuckyDrawAnimationPreset =
+  | "scramble"
+  | "rolling"
+  | "slot"
+  | "flip"
+  | "zoom"
+  | "fade_pop"
+  | "celebration_burst";
 
-export interface ThemeConfig {
-  backgroundType: "color" | "image" | "overlay_safe";
-  backgroundImageUrl?: string;
-  accentColor: string;
-  textColor: string;
-  overlayMode: boolean;
+export const luckyDrawAnimationPresets: LuckyDrawAnimationPreset[] = [
+  "scramble",
+  "rolling",
+  "slot",
+  "flip",
+  "zoom",
+  "fade_pop",
+  "celebration_burst",
+];
+
+export function isLuckyDrawAnimationPreset(value: string): value is LuckyDrawAnimationPreset {
+  return luckyDrawAnimationPresets.includes(value as LuckyDrawAnimationPreset);
 }
-
-export interface LuckyDrawPublicState {
-  moduleType: "lucky_draw";
-  eventSlug: string;
-  prizeName?: string;
-  latestWinningNumber?: string;
-  winners: string[];
-  layoutMode: "grid" | "exclusive";
-  animationPreset: "scramble" | "rolling" | "slot" | "flip" | "zoom" | "fade_pop";
-  status: DisplayStatus;
-  updatedAt: string;
-  theme: ThemeConfig;
-}
-
-export interface AuctionPublicState {
-  moduleType: "auction";
-  eventSlug: string;
-  lotNumber?: string;
-  lotTitle?: string;
-  currentBid?: number;
-  previousBid?: number;
-  bidderLabel?: string;
-  status: DisplayStatus;
-  updatedAt: string;
-  theme: ThemeConfig;
-}
-
-export type DisplayPayload = LuckyDrawPublicState | AuctionPublicState;

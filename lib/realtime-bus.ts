@@ -1,6 +1,4 @@
-import type { DisplayPayload } from "@/modules/shared/types/contracts";
-
-type Listener = (event: DisplayPayload) => void;
+type Listener<T = unknown> = (event: T) => void;
 
 class RealtimeBus {
   private listeners = new Set<Listener>();
@@ -10,7 +8,7 @@ class RealtimeBus {
     return () => this.listeners.delete(listener);
   }
 
-  publish(event: DisplayPayload) {
+  publish(event: unknown) {
     for (const listener of this.listeners) {
       listener(event);
     }

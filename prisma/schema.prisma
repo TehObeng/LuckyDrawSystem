@@ -10,6 +10,12 @@ datasource db {
 enum ModuleType {
   lucky_draw
   auction
+  master
+}
+
+enum OperatorRole {
+  admin
+  operator
 }
 
 enum DuplicatePolicy {
@@ -30,14 +36,19 @@ enum DisplayMode {
   overlay
 }
 
-enum DisplayStatus {
+enum DisplayStateStatus {
   idle
   ready
   revealing
   revealed
   session_complete
+  prize_complete
+  lot_intro
+  opening_bid
+  live_bid
   sold
   passed
+  cleared
 }
 
 enum LayoutMode {
@@ -65,6 +76,12 @@ enum DrawSessionStatus {
   completed
 }
 
+enum AuctionSessionStatus {
+  draft
+  active
+  completed
+}
+
 enum AuctionLotStatus {
   draft
   pending
@@ -73,24 +90,74 @@ enum AuctionLotStatus {
   passed
 }
 
+enum LuckyDrawAnimationPreset {
+  scramble
+  rolling
+  slot
+  flip
+  zoom
+  fade_pop
+  celebration_burst
+}
+
+enum MediaAssetKind {
+  background
+  logo
+  supporting
+}
+
+enum AuditActionType {
+  event_created
+  event_updated
+  event_archived
+  theme_created
+  theme_updated
+  screen_created
+  display_published
+  prize_created
+  prize_updated
+  session_created
+  session_updated
+  session_split
+  winner_revealed
+  winner_invalidated
+  winner_redrawn
+  winner_edited
+  winner_deleted
+  auction_session_created
+  auction_lot_created
+  auction_lot_updated
+  auction_bid_opened
+  auction_bid_placed
+  auction_bid_undone
+  auction_lot_sold
+  auction_lot_passed
+  ticket_pool_imported
+  auction_lot_imported
+}
+
 model Event {
   id                String          @id @default(cuid())
   name              String
   slug              String          @unique
   date              DateTime
+  locale            String          @default("en-US")
+  currencyCode      String          @default("USD")
   description       String?
   supportsLuckyDraw Boolean         @default(true)
   supportsAuction   Boolean         @default(true)
   ticketFormat      Json
+  settings          Json?
   duplicatePolicy   DuplicatePolicy @default(event)
   defaultThemeId    String?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   archivedAt        DateTime?
 
-  defaultTheme    ThemePreset?   @relation("DefaultEventTheme", fields: [defaultThemeId], references: [id])
+  defaultTheme    ThemePreset?   @relation("DefaultEventTheme", fields: [defaultThemeId], references: [id], onDelete: SetNull)
   themes          ThemePreset[]  @relation("ThemeByEvent")
   displayStates   DisplayState[]
+  displayScreens  DisplayScreen[]
   auditLogs       AuditLog[]
   prizeCategories PrizeCategory[]
   drawSessions    DrawSession[]
@@ -99,6 +166,9 @@ model Event {
   auctionLots     AuctionLot[]
   bidEntries      BidEntry[]
   auctionSessions AuctionSession[]
+  mediaAssets     MediaAsset[]
+
+  @@index([archivedAt])
 }
 
 model ThemePreset {
@@ -118,77 +188,142 @@ model ThemePreset {
 
   event               Event?          @relation("ThemeByEvent", fields: [eventId], references: [id])
   defaultForEvents    Event[]         @relation("DefaultEventTheme")
+  displayScreens      DisplayScreen[]
   prizeCategoryThemes PrizeCategory[] @relation("PrizeThemeOverride")
   auctionLotThemes    AuctionLot[]    @relation("AuctionLotThemeOverride")
+}
+
+model DisplayScreen {
+  id           String      @id @default(cuid())
+  eventId      String
+  moduleType   ModuleType
+  name         String
+  screenKey    String      @unique
+  isPrimary    Boolean     @default(false)
+  displayMode  DisplayMode @default(fullscreen)
+  themePresetId String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  themePreset ThemePreset? @relation(fields: [themePresetId], references: [id], onDelete: SetNull)
+  state       DisplayState?
+
+  @@index([eventId, moduleType, isPrimary])
 }
 
 model DisplayState {
   id         String        @id @default(cuid())
   eventId    String
+  screenId   String        @unique
   moduleType ModuleType
   routeKey   String
+  revision   Int           @default(0)
   payload    Json
   displayMode DisplayMode
   syncedAt   DateTime      @default(now())
-  status     DisplayStatus
+  status     DisplayStateStatus
 
-  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event  Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  screen DisplayScreen @relation(fields: [screenId], references: [id], onDelete: Cascade)
 
-  @@unique([eventId, moduleType, routeKey])
+  @@index([eventId, moduleType, routeKey])
 }
 
 model AuditLog {
-  id         String     @id @default(cuid())
-  eventId    String
-  moduleType ModuleType
-  actionType String
-  actor      String
-  payload    Json?
-  createdAt  DateTime   @default(now())
+  id            String          @id @default(cuid())
+  eventId       String
+  moduleType    ModuleType?
+  actionType    AuditActionType
+  actor         String
+  targetType    String?
+  targetId      String?
+  correlationId String?
+  undoOfId      String?
+  payload       Json?
+  createdAt     DateTime        @default(now())
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, createdAt])
+  @@index([correlationId])
+}
+
+model OperatorProfile {
+  id         String       @id @default(cuid())
+  authUserId String       @unique
+  email      String       @unique
+  displayName String
+  role       OperatorRole @default(operator)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+}
+
+model MediaAsset {
+  id        String         @id @default(cuid())
+  eventId   String?
+  kind      MediaAssetKind
+  bucket    String?
+  path      String?
+  publicUrl String
+  mimeType  String?
+  metadata  Json?
+  createdAt DateTime       @default(now())
+
+  event Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
 }
 
 model PrizeCategory {
-  id               String     @id @default(cuid())
+  id               String                   @id @default(cuid())
   eventId          String
   name             String
   quantity         Int
   description      String?
-  displayMode      LayoutMode @default(grid)
-  animationPreset  String     @default("fade_pop")
+  displayImageUrl  String?
+  boardSettings    Json?
+  displayMode      LayoutMode               @default(grid)
+  animationPreset  LuckyDrawAnimationPreset @default(fade_pop)
+  animationSpeed   Float                    @default(1)
   specialThemeId   String?
-  sortOrder        Int        @default(0)
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  sortOrder        Int                      @default(0)
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
 
   event        Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
   specialTheme ThemePreset?  @relation("PrizeThemeOverride", fields: [specialThemeId], references: [id])
   drawSessions DrawSession[]
   winners      Winner[]
+
+  @@index([eventId, sortOrder])
 }
 
 model DrawSession {
-  id                     String            @id @default(cuid())
-  prizeCategoryId        String
-  eventId                String
-  name                   String
-  sessionOrder           Int
-  plannedWinnerCount     Int
-  actualWinnerCount      Int               @default(0)
-  layoutMode             LayoutMode        @default(grid)
-  gridItemCount          Int               @default(10)
-  gridRows               Int?
-  gridCols               Int?
-  animationPresetOverride String?
-  animationSpeedOverride Float?
-  status                 DrawSessionStatus @default(draft)
-  createdAt              DateTime          @default(now())
-  updatedAt              DateTime          @updatedAt
+  id                      String                    @id @default(cuid())
+  prizeCategoryId         String
+  eventId                 String
+  name                    String
+  sessionOrder            Int
+  plannedWinnerCount      Int
+  actualWinnerCount       Int                       @default(0)
+  lastRevealOrder         Int                       @default(0)
+  layoutMode              LayoutMode                @default(grid)
+  gridItemCount           Int                       @default(12)
+  gridRows                Int?
+  gridCols                Int?
+  animationPresetOverride LuckyDrawAnimationPreset?
+  animationSpeedOverride  Float?
+  revealMode              RevealSource              @default(manual)
+  revision                Int                       @default(0)
+  status                  DrawSessionStatus         @default(draft)
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
 
   prizeCategory PrizeCategory @relation(fields: [prizeCategoryId], references: [id], onDelete: Cascade)
   event         Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
   winners       Winner[]
+
+  @@unique([eventId, sessionOrder])
+  @@index([eventId, prizeCategoryId, status])
 }
 
 model Winner {
@@ -201,6 +336,7 @@ model Winner {
   status          WinnerStatus @default(draft)
   revealSource    RevealSource @default(manual)
   notes           String?
+  redrawOfId      String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -208,7 +344,9 @@ model Winner {
   prizeCategory PrizeCategory @relation(fields: [prizeCategoryId], references: [id], onDelete: Cascade)
   drawSession   DrawSession   @relation(fields: [drawSessionId], references: [id], onDelete: Cascade)
 
+  @@unique([drawSessionId, revealOrder])
   @@index([eventId, ticketNumber])
+  @@index([drawSessionId, status])
 }
 
 model TicketPool {
@@ -227,50 +365,71 @@ model TicketPool {
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@unique([eventId, ticketNumber, series])
+  @@index([eventId, eligible])
 }
 
 model AuctionLot {
-  id            String           @id @default(cuid())
-  eventId       String
-  lotNumber     String
-  title         String
-  description   String?
-  openingBid    Decimal          @default(0)
-  currentBid    Decimal?
-  finalBid      Decimal?
-  status        AuctionLotStatus @default(draft)
-  winnerLabel   String?
-  orderIndex    Int              @default(0)
+  id              String           @id @default(cuid())
+  eventId         String
+  auctionSessionId String?
+  lotNumber       String
+  title           String
+  description     String?
+  displayImageUrl String?
+  openingBid      Decimal          @default(0)
+  currentBid      Decimal?
+  finalBid        Decimal?
+  status          AuctionLotStatus @default(draft)
+  winnerLabel     String?
+  displayTitle    String?
+  incrementRule   Json?
+  orderIndex      Int              @default(0)
+  revision        Int              @default(0)
   themeOverrideId String?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
-  event        Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  themeOverride ThemePreset? @relation("AuctionLotThemeOverride", fields: [themeOverrideId], references: [id])
-  bids         BidEntry[]
+  event          Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  auctionSession AuctionSession? @relation(fields: [auctionSessionId], references: [id], onDelete: SetNull)
+  themeOverride  ThemePreset?    @relation("AuctionLotThemeOverride", fields: [themeOverrideId], references: [id])
+  bids           BidEntry[]
+
+  @@unique([eventId, lotNumber])
+  @@unique([eventId, orderIndex])
+  @@index([eventId, status])
 }
 
 model BidEntry {
-  id           String   @id @default(cuid())
-  lotId        String
-  eventId      String
-  amount       Decimal
+  id             String    @id @default(cuid())
+  lotId          String
+  eventId        String
+  amount         Decimal
   previousAmount Decimal?
-  bidderLabel  String?
-  isOpeningBid Boolean  @default(false)
-  enteredBy    String?
-  createdAt    DateTime @default(now())
+  bidderLabel    String?
+  note           String?
+  isOpeningBid   Boolean   @default(false)
+  enteredBy      String?
+  voidedAt       DateTime?
+  createdAt      DateTime  @default(now())
 
   lot   AuctionLot @relation(fields: [lotId], references: [id], onDelete: Cascade)
   event Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([lotId, createdAt])
+  @@index([eventId, voidedAt])
 }
 
 model AuctionSession {
-  id         String           @id @default(cuid())
+  id         String               @id @default(cuid())
   eventId    String
   name       String
-  status     AuctionLotStatus @default(draft)
-  orderIndex Int              @default(0)
+  status     AuctionSessionStatus @default(draft)
+  orderIndex Int                  @default(0)
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
 
-  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  lots  AuctionLot[]
+
+  @@unique([eventId, orderIndex])
 }
