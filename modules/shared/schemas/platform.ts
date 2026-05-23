@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const moduleTypeSchema = z.enum(["lucky_draw", "auction", "master"]);
+export const moduleTypeSchema = z.enum(["lucky_draw", "auction", "chat_overlay", "master"]);
 export const operatorRoleSchema = z.enum(["admin", "operator"]);
 export const duplicatePolicySchema = z.enum(["event", "category", "allow"]);
 export const displayModeSchema = z.enum(["fullscreen", "overlay"]);
@@ -14,7 +14,9 @@ export const logoPositionSchema = z.enum(["top_left", "top_right", "top_center"]
 export const contentAlignmentSchema = z.enum(["left", "center"]);
 export const panelStyleSchema = z.enum(["glass", "solid", "minimal"]);
 export const heroImageBehaviorSchema = z.enum(["none", "poster", "spotlight", "background"]);
-export const masterDisplaySourceSchema = z.enum(["blank", "lucky_draw", "auction"]);
+export const masterDisplaySourceSchema = z.enum(["blank", "lucky_draw", "auction", "chat_overlay"]);
+export const chatOverlayStyleSchema = z.enum(["danmaku", "stack"]);
+export const chatOverlayDirectionSchema = z.enum(["left", "right"]);
 
 const hexColorSchema = z.string().regex(/^#(?:[0-9a-fA-F]{3}){1,2}$/);
 const optionalStringSchema = z.string().trim().optional().transform((value) => (value ? value : undefined));
@@ -49,6 +51,24 @@ export const ticketFormatSchema = z
   });
 
 export const defaultTicketFormat = ticketFormatSchema.parse({});
+
+export const chatOverlayConfigSchema = z.object({
+  style: chatOverlayStyleSchema.default("danmaku"),
+  scrollDirection: chatOverlayDirectionSchema.default("left"),
+  laneCount: z.number().int().min(1).max(8).default(3),
+  fontFamily: z.string().trim().max(120).default("inherit"),
+  fontSize: z.number().int().min(16).max(72).default(32),
+  speedPxPerSecond: z.number().int().min(40).max(480).default(140),
+  messageLifetimeMs: z.number().int().min(4000).max(30000).default(12000),
+  maxVisibleMessages: z.number().int().min(1).max(20).default(8),
+  cardOpacity: z.number().min(0).max(1).default(0.78),
+  accentColor: hexColorSchema.default("#34d399"),
+  strokeColor: hexColorSchema.default("#0f172a"),
+  backgroundColor: z.string().trim().max(64).default("rgba(2, 6, 23, 0.78)"),
+  showSenderName: z.boolean().default(true),
+});
+
+export const defaultChatOverlayConfig = chatOverlayConfigSchema.parse({});
 
 export const prizeBoardSettingsSchema = z.object({
   columns: z.number().int().min(1).max(12).default(4),
@@ -116,10 +136,19 @@ export const eventSettingsSchema = z.object({
   persistLiveSelections: z.boolean().default(true),
   showRouteCopyButtons: z.boolean().default(true),
   fallbackPollingIntervalMs: z.number().int().min(1000).max(30000).default(2500),
+  audienceChatEnabled: z.boolean().default(true),
+  audienceChatSubmissionEnabled: z.boolean().default(true),
+  audienceChatRequireName: z.boolean().default(false),
+  audienceChatAutoApproveSafeMessages: z.boolean().default(true),
+  audienceChatMaxLength: z.number().int().min(20).max(500).default(160),
+  audienceChatCooldownSeconds: z.number().int().min(0).max(120).default(8),
+  audienceChatPrompt: z.string().trim().max(160).default("Send a shout-out to the live audience wall."),
+  audienceChatOverlay: chatOverlayConfigSchema.default({}),
 });
 export const defaultEventSettings = eventSettingsSchema.parse({});
 
 export type TicketFormatSettings = z.infer<typeof ticketFormatSchema>;
+export type ChatOverlayConfig = z.infer<typeof chatOverlayConfigSchema>;
 export type PrizeBoardSettings = z.infer<typeof prizeBoardSettingsSchema>;
 export type ThemeSettings = z.infer<typeof themeSettingsSchema>;
 export type EventSettings = z.infer<typeof eventSettingsSchema>;

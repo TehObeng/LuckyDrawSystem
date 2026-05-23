@@ -123,6 +123,19 @@ export async function getWorkspaceSnapshot(selectedEventId?: string) {
         },
         take: 30,
       },
+      chatMessages: {
+        orderBy: [
+          { createdAt: "desc" },
+          { updatedAt: "desc" },
+        ],
+        take: 50,
+      },
+      chatBans: {
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 20,
+      },
     },
   });
 

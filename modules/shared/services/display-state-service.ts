@@ -3,15 +3,25 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   auctionDisplaySchema,
+  chatOverlayDisplaySchema,
   liveDisplayEnvelopeSchema,
   luckyDrawDisplaySchema,
   masterDisplaySchema,
   type AuctionDisplayEnvelope,
+  type ChatOverlayDisplayEnvelope,
   type LiveDisplayEnvelope,
   type LuckyDrawDisplayEnvelope,
   type MasterDisplayEnvelope,
 } from "@/modules/shared/schemas/display";
-import { defaultEventSettings, defaultPrizeBoardSettings, defaultThemeSettings, eventSettingsSchema, themeSettingsSchema, type EventSettings } from "@/modules/shared/schemas/platform";
+import {
+  defaultChatOverlayConfig,
+  defaultEventSettings,
+  defaultPrizeBoardSettings,
+  defaultThemeSettings,
+  eventSettingsSchema,
+  themeSettingsSchema,
+  type EventSettings,
+} from "@/modules/shared/schemas/platform";
 
 type DbClient = Prisma.TransactionClient | PrismaClient;
 
@@ -26,18 +36,28 @@ function createScreenKey(eventSlug: string, moduleType: ModuleType) {
       return `${eventSlug}-lucky-draw`;
     case "auction":
       return `${eventSlug}-auction`;
+    case "chat_overlay":
+      return `${eventSlug}-chat-overlay`;
     case "master":
       return `${eventSlug}-master`;
   }
 }
 
 function sceneToStatus(scene: LiveDisplayEnvelope["scene"]) {
-  if (scene === "blank") {
+  if (scene === "blank" || scene === "cleared") {
     return "cleared";
   }
 
-  if (scene === "lucky_draw" || scene === "auction") {
+  if (scene === "lucky_draw" || scene === "auction" || scene === "chat_overlay") {
     return "ready";
+  }
+
+  if (scene === "idle") {
+    return "chat_idle";
+  }
+
+  if (scene === "live") {
+    return "chat_live";
   }
 
   return scene;
@@ -173,9 +193,10 @@ function buildMasterDisplayFromSource(input: {
   theme?: ThemePreset | null;
   note?: string;
   revision?: number;
-  source: "blank" | "lucky_draw" | "auction";
+  source: "blank" | "lucky_draw" | "auction" | "chat_overlay";
   luckyDrawState?: LuckyDrawDisplayEnvelope;
   auctionState?: AuctionDisplayEnvelope;
+  chatOverlayState?: ChatOverlayDisplayEnvelope;
   activeScreenKey?: string;
 }): MasterDisplayEnvelope {
   return masterDisplaySchema.parse({
@@ -190,7 +211,9 @@ function buildMasterDisplayFromSource(input: {
         ? input.luckyDrawState?.theme ?? mapThemePresetToConfig(input.theme)
         : input.source === "auction"
           ? input.auctionState?.theme ?? mapThemePresetToConfig(input.theme)
-          : mapThemePresetToConfig(input.theme),
+          : input.source === "chat_overlay"
+            ? input.chatOverlayState?.theme ?? mapThemePresetToConfig(input.theme)
+            : mapThemePresetToConfig(input.theme),
     publishedAt: new Date().toISOString(),
     scene: input.source,
     activeScreenKey: input.activeScreenKey,
@@ -200,9 +223,12 @@ function buildMasterDisplayFromSource(input: {
         ? "Master output is blank."
         : input.source === "lucky_draw"
           ? "Master output is mirroring Lucky Draw."
-          : "Master output is mirroring Auction."),
+          : input.source === "auction"
+            ? "Master output is mirroring Auction."
+            : "Master output is mirroring Audience Chat."),
     luckyDrawState: input.source === "lucky_draw" ? input.luckyDrawState : undefined,
     auctionState: input.source === "auction" ? input.auctionState : undefined,
+    chatOverlayState: input.source === "chat_overlay" ? input.chatOverlayState : undefined,
   });
 }
 
@@ -293,7 +319,9 @@ export async function ensurePrimaryDisplayScreen(
           ? "Lucky Draw Main Screen"
           : input.moduleType === "auction"
             ? "Auction Main Screen"
-            : "Master Overlay Screen",
+            : input.moduleType === "chat_overlay"
+              ? "Audience Chat Overlay"
+              : "Master Overlay Screen",
       screenKey: createScreenKey(input.eventSlug, input.moduleType),
       isPrimary: true,
       themePresetId: input.themePresetId ?? null,
@@ -376,6 +404,38 @@ export function buildIdleAuctionDisplay(input: {
   });
 }
 
+export function buildIdleChatOverlayDisplay(input: {
+  eventId: string;
+  eventSlug: string;
+  screenKey: string;
+  displayMode: DisplayMode;
+  theme?: ThemePreset | null;
+  revision?: number;
+  prompt?: string;
+  submissionEnabled?: boolean;
+  autoApproveSafeMessages?: boolean;
+}): ChatOverlayDisplayEnvelope {
+  return chatOverlayDisplaySchema.parse({
+    eventId: input.eventId,
+    eventSlug: input.eventSlug,
+    screenKey: input.screenKey,
+    moduleType: "chat_overlay",
+    revision: input.revision ?? 0,
+    displayMode: input.displayMode,
+    theme: mapThemePresetToConfig(input.theme),
+    publishedAt: new Date().toISOString(),
+    scene: "idle",
+    prompt: input.prompt ?? "Send a shout-out to the live audience wall.",
+    note: "Audience chat is standing by.",
+    submissionEnabled: input.submissionEnabled ?? true,
+    autoApproveSafeMessages: input.autoApproveSafeMessages ?? true,
+    pendingCount: 0,
+    approvedCount: 0,
+    messages: [],
+    overlayConfig: defaultChatOverlayConfig,
+  });
+}
+
 export function buildIdleMasterDisplay(input: {
   eventId: string;
   eventSlug: string;
@@ -393,7 +453,7 @@ export function buildIdleMasterDisplay(input: {
     theme: input.theme,
     revision: input.revision,
     source: "blank",
-    note: input.note ?? "Choose Lucky Draw or Auction to send the master output live.",
+    note: input.note ?? "Choose Lucky Draw, Auction, or Audience Chat to send the master output live.",
   });
 }
 
@@ -445,7 +505,7 @@ async function resolveModuleDisplayStateForEvent(
   db: DbClient,
   input: {
     event: Event & { defaultTheme: ThemePreset | null };
-    moduleType: "lucky_draw" | "auction";
+    moduleType: "lucky_draw" | "auction" | "chat_overlay";
   },
 ) {
   const screen = await ensurePrimaryDisplayScreen(db, {
@@ -484,6 +544,23 @@ async function resolveModuleDisplayStateForEvent(
     };
   }
 
+  if (input.moduleType === "chat_overlay") {
+    const settings = parseEventSettings(input.event.settings);
+    return {
+      screen,
+      state: buildIdleChatOverlayDisplay({
+        eventId: input.event.id,
+        eventSlug: input.event.slug,
+        screenKey: screen.screenKey,
+        displayMode: screen.displayMode,
+        theme: input.event.defaultTheme,
+        prompt: settings.audienceChatPrompt,
+        submissionEnabled: settings.audienceChatSubmissionEnabled,
+        autoApproveSafeMessages: settings.audienceChatAutoApproveSafeMessages,
+      }),
+    };
+  }
+
   return {
     screen,
     state: buildIdleAuctionDisplay({
@@ -497,7 +574,7 @@ async function resolveModuleDisplayStateForEvent(
   };
 }
 
-async function syncMasterDisplayForEvent(db: DbClient, eventId: string, preferredSource?: "blank" | "lucky_draw" | "auction") {
+async function syncMasterDisplayForEvent(db: DbClient, eventId: string, preferredSource?: "blank" | "lucky_draw" | "auction" | "chat_overlay") {
   const event = await db.event.findUnique({
     where: { id: eventId },
     include: {
@@ -554,6 +631,28 @@ async function syncMasterDisplayForEvent(db: DbClient, eventId: string, preferre
     );
   }
 
+  if (source === "chat_overlay") {
+    const chatDisplay = await resolveModuleDisplayStateForEvent(db, {
+      event,
+      moduleType: "chat_overlay",
+    });
+
+    return persistDisplayState(
+      db,
+      masterScreen,
+      buildMasterDisplayFromSource({
+        eventId: event.id,
+        eventSlug: event.slug,
+        screenKey: masterScreen.screenKey,
+        displayMode: masterScreen.displayMode,
+        theme: event.defaultTheme,
+        source,
+        chatOverlayState: chatDisplay.state as ChatOverlayDisplayEnvelope,
+        activeScreenKey: chatDisplay.screen.screenKey,
+      }),
+    );
+  }
+
   const auctionDisplay = await resolveModuleDisplayStateForEvent(db, {
     event,
     moduleType: "auction",
@@ -579,7 +678,7 @@ export async function publishMasterDisplaySelection(
   db: DbClient,
   input: {
     eventId: string;
-    source: "blank" | "lucky_draw" | "auction";
+    source: "blank" | "lucky_draw" | "auction" | "chat_overlay";
     displayMode?: DisplayMode;
     note?: string;
   },
@@ -667,6 +766,13 @@ export async function createDefaultDisplayStates(
     moduleType: "auction",
     themePresetId: input.themePresetId,
   });
+  const chatScreen = await ensurePrimaryDisplayScreen(db, {
+    eventId: input.eventId,
+    eventSlug: input.eventSlug,
+    moduleType: "chat_overlay",
+    themePresetId: input.themePresetId,
+    displayMode: "overlay",
+  });
   const masterScreen = await ensurePrimaryDisplayScreen(db, {
     eventId: input.eventId,
     eventSlug: input.eventSlug,
@@ -692,6 +798,18 @@ export async function createDefaultDisplayStates(
       screenKey: auctionScreen.screenKey,
       displayMode: auctionScreen.displayMode,
       currencyCode: input.currencyCode,
+    }),
+  );
+  await publishDisplayState(
+    db,
+    buildIdleChatOverlayDisplay({
+      eventId: input.eventId,
+      eventSlug: input.eventSlug,
+      screenKey: chatScreen.screenKey,
+      displayMode: chatScreen.displayMode,
+      prompt: defaultEventSettings.audienceChatPrompt,
+      submissionEnabled: defaultEventSettings.audienceChatSubmissionEnabled,
+      autoApproveSafeMessages: defaultEventSettings.audienceChatAutoApproveSafeMessages,
     }),
   );
   await publishDisplayState(
@@ -796,6 +914,13 @@ async function applyCurrentThemeToState(
     });
   }
 
+  if (state.moduleType === "chat_overlay") {
+    return chatOverlayDisplaySchema.parse({
+      ...state,
+      theme: mapThemePresetToConfig(screen.themePreset ?? screen.event.defaultTheme),
+    });
+  }
+
   if (state.scene === "lucky_draw" && state.luckyDrawState) {
     const luckyTheme = await resolveLuckyDrawTheme(screen, state.luckyDrawState);
     return masterDisplaySchema.parse({
@@ -816,6 +941,18 @@ async function applyCurrentThemeToState(
       auctionState: auctionDisplaySchema.parse({
         ...state.auctionState,
         theme: auctionTheme,
+      }),
+    });
+  }
+
+  if (state.scene === "chat_overlay" && state.chatOverlayState) {
+    const chatTheme = mapThemePresetToConfig(screen.themePreset ?? screen.event.defaultTheme);
+    return masterDisplaySchema.parse({
+      ...state,
+      theme: chatTheme,
+      chatOverlayState: chatOverlayDisplaySchema.parse({
+        ...state.chatOverlayState,
+        theme: chatTheme,
       }),
     });
   }
@@ -861,6 +998,20 @@ export async function getPublicDisplayState(moduleType: ModuleType, eventOrScree
       displayMode: screen.displayMode,
       theme: screen.themePreset ?? screen.event.defaultTheme,
       currencyCode: screen.event.currencyCode,
+    });
+  }
+
+  if (moduleType === "chat_overlay") {
+    const settings = parseEventSettings(screen.event.settings);
+    return buildIdleChatOverlayDisplay({
+      eventId: screen.eventId,
+      eventSlug: screen.event.slug,
+      screenKey: screen.screenKey,
+      displayMode: screen.displayMode,
+      theme: screen.themePreset ?? screen.event.defaultTheme,
+      prompt: settings.audienceChatPrompt,
+      submissionEnabled: settings.audienceChatSubmissionEnabled,
+      autoApproveSafeMessages: settings.audienceChatAutoApproveSafeMessages,
     });
   }
 

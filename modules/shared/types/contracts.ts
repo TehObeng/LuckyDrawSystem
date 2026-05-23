@@ -1,5 +1,7 @@
 export type {
   AuctionDisplayEnvelope,
+  ChatOverlayDisplayEnvelope,
+  ChatOverlayScene,
   AuctionScene,
   CleanBoardCard,
   CleanBoardSettings,
@@ -11,6 +13,8 @@ export type {
 } from "@/modules/shared/schemas/display";
 export {
   auctionDisplaySchema,
+  chatOverlayDisplaySchema,
+  chatOverlaySceneSchema,
   auctionSceneSchema,
   cleanBoardCardSchema,
   cleanBoardSettingsSchema,
@@ -21,6 +25,7 @@ export {
   masterSceneSchema,
 } from "@/modules/shared/schemas/display";
 export type {
+  ChatOverlayConfig,
   EventSettings,
   PrizeBoardSettings,
   ThemeSettings as ThemeConfig,
@@ -31,7 +36,11 @@ export {
   backgroundTypeSchema,
   backgroundFitSchema,
   backgroundPositionSchema,
+  chatOverlayDirectionSchema,
+  chatOverlayConfigSchema,
+  chatOverlayStyleSchema,
   contentAlignmentSchema,
+  defaultChatOverlayConfig,
   defaultEventSettings,
   defaultPrizeBoardSettings,
   defaultThemeSettings,
@@ -52,7 +61,7 @@ export {
   ticketFormatSchema,
 } from "@/modules/shared/schemas/platform";
 
-export type ModuleType = "lucky_draw" | "auction" | "master";
+export type ModuleType = "lucky_draw" | "auction" | "chat_overlay" | "master";
 export type LuckyDrawAnimationPreset =
   | "scramble"
   | "rolling"

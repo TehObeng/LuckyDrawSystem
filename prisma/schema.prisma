@@ -10,6 +10,7 @@ datasource db {
 enum ModuleType {
   lucky_draw
   auction
+  chat_overlay
   master
 }
 
@@ -49,6 +50,20 @@ enum DisplayStateStatus {
   sold
   passed
   cleared
+  chat_idle
+  chat_live
+}
+
+enum ChatMessageStatus {
+  pending
+  approved
+  rejected
+}
+
+enum ChatRiskLevel {
+  safe
+  risky
+  blocked
 }
 
 enum LayoutMode {
@@ -132,6 +147,13 @@ enum AuditActionType {
   auction_bid_undone
   auction_lot_sold
   auction_lot_passed
+  chat_message_received
+  chat_message_approved
+  chat_message_rejected
+  chat_message_deleted
+  chat_sender_banned
+  chat_overlay_cleared
+  chat_test_message_created
   ticket_pool_imported
   auction_lot_imported
 }
@@ -167,6 +189,8 @@ model Event {
   bidEntries      BidEntry[]
   auctionSessions AuctionSession[]
   mediaAssets     MediaAsset[]
+  chatMessages    ChatMessage[]
+  chatBans        ChatBan[]
 
   @@index([archivedAt])
 }
@@ -273,6 +297,42 @@ model MediaAsset {
   createdAt DateTime       @default(now())
 
   event Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model ChatMessage {
+  id                String            @id @default(cuid())
+  eventId           String
+  senderName        String?
+  content           String
+  normalizedContent String?
+  status            ChatMessageStatus @default(pending)
+  riskLevel         ChatRiskLevel     @default(safe)
+  sourceHash        String?
+  isTest            Boolean           @default(false)
+  approvedAt        DateTime?
+  rejectedAt        DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, status, createdAt])
+  @@index([eventId, sourceHash])
+}
+
+model ChatBan {
+  id         String   @id @default(cuid())
+  eventId    String
+  sourceHash String
+  label      String?
+  reason     String?
+  createdBy  String?
+  createdAt  DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, sourceHash])
+  @@index([eventId, createdAt])
 }
 
 model PrizeCategory {

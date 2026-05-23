@@ -222,6 +222,13 @@ export async function updateEvent(input: z.input<typeof eventCommandSchema>, act
     await ensurePrimaryDisplayScreen(tx, {
       eventId: event.id,
       eventSlug: event.slug,
+      moduleType: "chat_overlay",
+      themePresetId: event.defaultThemeId,
+      displayMode: "overlay",
+    });
+    await ensurePrimaryDisplayScreen(tx, {
+      eventId: event.id,
+      eventSlug: event.slug,
       moduleType: "master",
       themePresetId: event.defaultThemeId,
     });

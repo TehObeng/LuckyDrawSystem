@@ -4,23 +4,6 @@ import type { LuckyDrawDisplayEnvelope } from "@/modules/shared/types/contracts"
 
 type LuckyDrawPublicState = LuckyDrawDisplayEnvelope;
 
-const animationPresets = new Set<LuckyDrawPublicState["animationPreset"]>([
-  "scramble",
-  "rolling",
-  "slot",
-  "flip",
-  "zoom",
-  "fade_pop",
-]);
-
-function toAnimationPreset(value: string | null | undefined): LuckyDrawPublicState["animationPreset"] {
-  if (value && animationPresets.has(value as LuckyDrawPublicState["animationPreset"])) {
-    return value as LuckyDrawPublicState["animationPreset"];
-  }
-
-  return "fade_pop";
-}
-
 export async function revealWinner(input: LuckyDrawRevealInput) {
   const payload = luckyDrawRevealSchema.parse(input);
   return revealWinnerCommand(payload, payload.actor);

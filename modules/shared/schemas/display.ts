@@ -1,9 +1,18 @@
 import { z } from "zod";
-import { displayModeSchema, layoutModeSchema, luckyDrawAnimationPresetSchema, moduleTypeSchema, prizeBoardSettingsSchema, themeSettingsSchema } from "@/modules/shared/schemas/platform";
+import {
+  chatOverlayConfigSchema,
+  displayModeSchema,
+  layoutModeSchema,
+  luckyDrawAnimationPresetSchema,
+  moduleTypeSchema,
+  prizeBoardSettingsSchema,
+  themeSettingsSchema,
+} from "@/modules/shared/schemas/platform";
 
 export const luckyDrawSceneSchema = z.enum(["idle", "ready", "revealing", "revealed", "session_complete", "prize_complete"]);
 export const auctionSceneSchema = z.enum(["idle", "lot_intro", "opening_bid", "live_bid", "sold", "passed"]);
-export const masterSceneSchema = z.enum(["blank", "lucky_draw", "auction"]);
+export const chatOverlaySceneSchema = z.enum(["idle", "live", "cleared"]);
+export const masterSceneSchema = z.enum(["blank", "lucky_draw", "auction", "chat_overlay"]);
 
 export const winnerChipSchema = z.object({
   id: z.string(),
@@ -23,6 +32,13 @@ export const cleanBoardSettingsSchema = z.object({
   displayAmount: z.number().int().min(1).max(120).default(12),
   columns: z.number().int().min(1).max(120).default(4),
   rows: z.number().int().min(1).max(120).default(3),
+});
+
+export const chatOverlayMessageSchema = z.object({
+  id: z.string(),
+  senderName: z.string().optional(),
+  content: z.string(),
+  approvedAt: z.string().optional(),
 });
 
 const displayEnvelopeBaseSchema = z.object({
@@ -87,6 +103,19 @@ export const auctionDisplaySchema = displayEnvelopeBaseSchema.extend({
   cue: z.string().optional(),
 });
 
+export const chatOverlayDisplaySchema = displayEnvelopeBaseSchema.extend({
+  moduleType: z.literal("chat_overlay"),
+  scene: chatOverlaySceneSchema,
+  prompt: z.string().optional(),
+  note: z.string().optional(),
+  submissionEnabled: z.boolean().default(true),
+  autoApproveSafeMessages: z.boolean().default(true),
+  pendingCount: z.number().int().min(0).default(0),
+  approvedCount: z.number().int().min(0).default(0),
+  messages: z.array(chatOverlayMessageSchema).default([]),
+  overlayConfig: chatOverlayConfigSchema,
+});
+
 export const masterDisplaySchema = displayEnvelopeBaseSchema.extend({
   moduleType: z.literal("master"),
   scene: masterSceneSchema,
@@ -94,16 +123,19 @@ export const masterDisplaySchema = displayEnvelopeBaseSchema.extend({
   note: z.string().optional(),
   luckyDrawState: luckyDrawDisplaySchema.optional(),
   auctionState: auctionDisplaySchema.optional(),
+  chatOverlayState: chatOverlayDisplaySchema.optional(),
 });
 
-export const liveDisplayEnvelopeSchema = z.discriminatedUnion("moduleType", [luckyDrawDisplaySchema, auctionDisplaySchema, masterDisplaySchema]);
+export const liveDisplayEnvelopeSchema = z.discriminatedUnion("moduleType", [luckyDrawDisplaySchema, auctionDisplaySchema, chatOverlayDisplaySchema, masterDisplaySchema]);
 
 export type LuckyDrawScene = z.infer<typeof luckyDrawSceneSchema>;
 export type AuctionScene = z.infer<typeof auctionSceneSchema>;
+export type ChatOverlayScene = z.infer<typeof chatOverlaySceneSchema>;
 export type MasterScene = z.infer<typeof masterSceneSchema>;
 export type CleanBoardCard = z.infer<typeof cleanBoardCardSchema>;
 export type CleanBoardSettings = z.infer<typeof cleanBoardSettingsSchema>;
 export type LuckyDrawDisplayEnvelope = z.infer<typeof luckyDrawDisplaySchema>;
 export type AuctionDisplayEnvelope = z.infer<typeof auctionDisplaySchema>;
+export type ChatOverlayDisplayEnvelope = z.infer<typeof chatOverlayDisplaySchema>;
 export type MasterDisplayEnvelope = z.infer<typeof masterDisplaySchema>;
 export type LiveDisplayEnvelope = z.infer<typeof liveDisplayEnvelopeSchema>;

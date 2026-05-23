@@ -26,8 +26,12 @@ interface AuctionLotOption {
   status: string;
 }
 
+type MasterSource = "blank" | "lucky_draw" | "auction" | "chat_overlay";
+
+type DisplayStateModuleType = Exclude<MasterSource, "blank"> | "master";
+
 interface DisplayStateSummary {
-  moduleType: "lucky_draw" | "auction" | "master";
+  moduleType: DisplayStateModuleType;
   scene: string;
   screenKey: string;
   displayMode: "fullscreen" | "overlay";
@@ -44,7 +48,7 @@ interface LiveControlWorkspaceProps {
   eventId: string;
   eventSlug: string;
   eventSettings: EventSettings;
-  masterSource: "blank" | "lucky_draw" | "auction";
+  masterSource: MasterSource;
   masterDisplayMode: "fullscreen" | "overlay";
   displayStates: DisplayStateSummary[];
   luckySessions: PrizeSessionOption[];
@@ -109,7 +113,7 @@ export function LiveControlWorkspace({
   const [bidAmount, setBidAmount] = useState("");
   const [bidderLabel, setBidderLabel] = useState("");
   const [winnerLabel, setWinnerLabel] = useState("");
-  const [masterScene, setMasterScene] = useState<"blank" | "lucky_draw" | "auction">(masterSource);
+  const [masterScene, setMasterScene] = useState<MasterSource>(masterSource);
   const [masterMode, setMasterMode] = useState<"fullscreen" | "overlay">(masterDisplayMode);
   const [masterNote, setMasterNote] = useState("");
   const [submittingKey, setSubmittingKey] = useState<string | null>(null);
@@ -364,11 +368,12 @@ export function LiveControlWorkspace({
               id="masterSource"
               name="source"
               value={masterScene}
-              onChange={(event) => setMasterScene(event.target.value as "blank" | "lucky_draw" | "auction")}
+              onChange={(event) => setMasterScene(event.target.value as MasterSource)}
             >
               <option value="blank">Blank</option>
               <option value="lucky_draw">Lucky Draw</option>
               <option value="auction">Auction</option>
+              <option value="chat_overlay">Chat Overlay</option>
             </Select>
           </div>
           <div className="space-y-2">
@@ -390,7 +395,7 @@ export function LiveControlWorkspace({
         </form>
 
         <div className="grid gap-4 md:grid-cols-3">
-          {(["master", "lucky_draw", "auction"] as const).map((moduleType) => {
+          {(["master", "lucky_draw", "auction", "chat_overlay"] as const).map((moduleType) => {
             const state = liveStateMap[moduleType];
             return (
               <div key={moduleType} className="rounded-[1.25rem] border border-white/10 bg-white/[0.03] px-4 py-4">
