@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Surface, SurfaceCopy, SurfaceTitle } from "@/components/ui/surface";
+import { withBasePath } from "@/lib/public-path";
 import { defaultPrizeBoardSettings, type LuckyDrawAnimationPreset, type PrizeBoardSettings } from "@/modules/shared/types/contracts";
 
 type WinnerStatus = "draft" | "revealed" | "confirmed" | "invalid" | "redrawn" | "deleted";
@@ -224,7 +225,7 @@ export function SimpleLuckyDrawWorkspace({
 
   const pendingDraftCount = selectedSession?.winners.filter((winner) => winner.status === "draft").length ?? 0;
   const visibleWinners = selectedSession?.winners ?? [];
-  const cleanDisplayRoute = `/display/lucky-draw-clean/${eventSlug}`;
+  const cleanDisplayRoute = withBasePath(`/display/lucky-draw-clean/${eventSlug}`);
   const selectedSessionGridItemCount = selectedSession?.gridItemCount;
   const selectedSessionGridRows = selectedSession?.gridRows;
   const selectedSessionGridCols = selectedSession?.gridCols;

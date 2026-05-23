@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Surface, SurfaceCopy, SurfaceTitle } from "@/components/ui/surface";
+import { withBasePath } from "@/lib/public-path";
 import type { EventSettings } from "@/modules/shared/types/contracts";
 
 interface PrizeSessionOption {
@@ -135,10 +136,10 @@ export function LiveControlWorkspace({
     [displayStates],
   );
   const routeGroups = [
-    { key: "lucky_draw" as const, label: "Lucky Draw", href: routeFor("lucky_draw", eventSlug) },
-    { key: "lucky_draw_all" as const, label: "Lucky Draw Full Board", href: `/display/lucky-draw-all/${eventSlug}` },
-    { key: "auction" as const, label: "Auction", href: routeFor("auction", eventSlug) },
-    { key: "master" as const, label: "Master Overlay", href: routeFor("master", eventSlug) },
+    { key: "lucky_draw" as const, label: "Lucky Draw", href: withBasePath(routeFor("lucky_draw", eventSlug)) },
+    { key: "lucky_draw_all" as const, label: "Lucky Draw Full Board", href: withBasePath(`/display/lucky-draw-all/${eventSlug}`) },
+    { key: "auction" as const, label: "Auction", href: withBasePath(routeFor("auction", eventSlug)) },
+    { key: "master" as const, label: "Master Overlay", href: withBasePath(routeFor("master", eventSlug)) },
   ];
 
   useEffect(() => {

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Surface, SurfaceCopy, SurfaceTitle } from "@/components/ui/surface";
 import { createMediaAssetAction, createThemeAction, updateMediaAssetAction, updateThemeAction } from "@/app/admin/actions";
+import { withBasePath } from "@/lib/public-path";
 import { getWorkspaceSnapshot } from "@/modules/shared/services/workspace-query-service";
 import type { ThemeConfig } from "@/modules/shared/types/contracts";
 
@@ -317,7 +318,7 @@ export default async function ThemesPage({ searchParams }: { searchParams: Promi
                   <p className="font-medium text-slate-100">{route.label}</p>
                   <p className="mt-1 text-sm text-slate-500">{route.href}</p>
                   <div className="mt-3">
-                    <a href={route.href} target="_blank" rel="noreferrer" className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300">
+                    <a href={withBasePath(route.href)} target="_blank" rel="noreferrer" className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300">
                       Open display
                     </a>
                   </div>

@@ -5,6 +5,7 @@ import { Select } from "@/components/ui/select";
 import { Surface, SurfaceCopy, SurfaceTitle } from "@/components/ui/surface";
 import { Textarea } from "@/components/ui/textarea";
 import { importAuctionLotsAction, importTicketPoolAction } from "@/app/admin/actions";
+import { withBasePath } from "@/lib/public-path";
 import { getWorkspaceSnapshot } from "@/modules/shared/services/workspace-query-service";
 
 export default async function ImportsPage({ searchParams }: { searchParams: Promise<{ event?: string }> }) {
@@ -71,13 +72,13 @@ export default async function ImportsPage({ searchParams }: { searchParams: Prom
         <SurfaceCopy>Use server-side CSV routes for operational backups, reconciliation, or sponsor reports.</SurfaceCopy>
         <div className="grid gap-4 md:grid-cols-3">
           <Button asChild variant="secondary">
-            <a href={`/api/export/ticket-pool/${selectedEvent.id}`}>Download Ticket Pool CSV</a>
+            <a href={withBasePath(`/api/export/ticket-pool/${selectedEvent.id}`)}>Download Ticket Pool CSV</a>
           </Button>
           <Button asChild variant="secondary">
-            <a href={`/api/export/winners/${selectedEvent.id}`}>Download Winners CSV</a>
+            <a href={withBasePath(`/api/export/winners/${selectedEvent.id}`)}>Download Winners CSV</a>
           </Button>
           <Button asChild variant="secondary">
-            <a href={`/api/export/auction-results/${selectedEvent.id}`}>Download Auction Results CSV</a>
+            <a href={withBasePath(`/api/export/auction-results/${selectedEvent.id}`)}>Download Auction Results CSV</a>
           </Button>
         </div>
       </Surface>

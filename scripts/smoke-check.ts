@@ -1,4 +1,5 @@
 const baseUrl = process.env.SMOKE_BASE_URL ?? "http://localhost:3000";
+const smokeBasePath = process.env.SMOKE_BASE_PATH ?? process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const smokeEventId = process.env.SMOKE_EVENT_ID;
 
 type RouteCheck = {
@@ -42,8 +43,17 @@ if (smokeEventId) {
   apiChecks.push({ path: `/api/export/ticket-pool/${smokeEventId}`, expected: [200] });
 }
 
+function smokeUrl(path: string) {
+  const base = new URL(baseUrl);
+  const basePathFromUrl = base.pathname === "/" ? "" : base.pathname.replace(/\/$/, "");
+  const configuredBasePath = smokeBasePath.replace(/\/$/, "");
+  const prefix = configuredBasePath || basePathFromUrl;
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return new URL(`${prefix}${normalizedPath}`.replace(/\/+/g, "/"), base.origin);
+}
+
 async function runCheck(check: RouteCheck) {
-  const response = await fetch(new URL(check.path, baseUrl), {
+  const response = await fetch(smokeUrl(check.path), {
     method: check.method ?? "GET",
     redirect: check.redirect ?? "follow",
     headers: check.headers,

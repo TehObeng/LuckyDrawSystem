@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { withBasePath } from "@/lib/public-path";
 import { liveDisplayEnvelopeSchema, type LiveDisplayEnvelope } from "@/modules/shared/types/contracts";
 
 export function useRealtimeDisplay<T extends LiveDisplayEnvelope>(
@@ -34,7 +35,7 @@ export function useRealtimeDisplay<T extends LiveDisplayEnvelope>(
 
     async function hydrateCurrentState() {
       try {
-        const response = await fetch(`/api/display/${moduleType}/${encodeURIComponent(eventOrScreen)}`, {
+        const response = await fetch(withBasePath(`/api/display/${moduleType}/${encodeURIComponent(eventOrScreen)}`), {
           cache: "no-store",
         });
 

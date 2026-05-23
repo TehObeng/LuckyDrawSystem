@@ -2,6 +2,7 @@
 
 import { AlertTriangle, CheckCircle2, X } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { withBasePath } from "@/lib/public-path";
 import { cn } from "@/lib/utils";
 
 export function QueryNotice({ className }: { className?: string }) {
@@ -18,7 +19,8 @@ export function QueryNotice({ className }: { className?: string }) {
   const nextParams = new URLSearchParams(searchParams.toString());
   nextParams.delete("error");
   nextParams.delete("notice");
-  const dismissHref = nextParams.toString() ? `${pathname}?${nextParams.toString()}` : pathname;
+  const relativeDismissHref = nextParams.toString() ? `${pathname}?${nextParams.toString()}` : pathname;
+  const dismissHref = withBasePath(relativeDismissHref);
   const isError = Boolean(error);
   const Icon = isError ? AlertTriangle : CheckCircle2;
 

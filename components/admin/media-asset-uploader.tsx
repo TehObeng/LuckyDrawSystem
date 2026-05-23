@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { withBasePath } from "@/lib/public-path";
 
 interface MediaAssetUploaderProps {
   eventId: string;
@@ -42,7 +43,7 @@ export function MediaAssetUploader({ eventId }: MediaAssetUploaderProps) {
       uploadPayload.set("title", title || file.name);
       uploadPayload.set("file", file);
 
-      const uploadResponse = await fetch("/api/uploads/local", {
+      const uploadResponse = await fetch(withBasePath("/api/uploads/local"), {
         method: "POST",
         body: uploadPayload,
       });
