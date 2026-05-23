@@ -12,6 +12,7 @@ const navItems = [
   { href: "/admin/themes", label: "Themes", icon: Paintbrush },
   { href: "/admin/settings", label: "Settings", icon: Settings2 },
   { href: "/admin/lucky-draw", label: "Lucky Draw", icon: Sparkles },
+  { href: "/admin/simple-lucky-draw", label: "Simple Draw", icon: Activity },
   { href: "/admin/auction", label: "Auction", icon: Gavel },
   { href: "/admin/imports", label: "Imports", icon: Gauge },
   { href: "/admin/audit", label: "Audit", icon: ScrollText },

@@ -106,6 +106,15 @@ function upgradeLuckyDrawPayload(value: unknown) {
   }
 
   const payload = value as Record<string, unknown>;
+  const grid =
+    payload.grid && typeof payload.grid === "object" && !Array.isArray(payload.grid)
+      ? (payload.grid as Record<string, unknown>)
+      : { itemCount: 12 };
+  const displayAmount = Number(grid.itemCount ?? 12);
+  const board =
+    payload.board && typeof payload.board === "object" && !Array.isArray(payload.board)
+      ? (payload.board as Record<string, unknown>)
+      : {};
   const progress =
     payload.progress && typeof payload.progress === "object" && !Array.isArray(payload.progress)
       ? (payload.progress as Record<string, unknown>)
@@ -113,6 +122,14 @@ function upgradeLuckyDrawPayload(value: unknown) {
 
   return {
     ...payload,
+    board: {
+      designWidth: Number(board.designWidth ?? 1920),
+      designHeight: Number(board.designHeight ?? 1080),
+      displayAmount: Number(board.displayAmount ?? displayAmount),
+      columns: Number(board.columns ?? Math.max(1, Math.ceil(Math.sqrt(displayAmount * (1920 / 1080))))),
+      rows: Number(board.rows ?? Math.max(1, Math.ceil(displayAmount / Math.max(1, Math.ceil(Math.sqrt(displayAmount * (1920 / 1080))))))),
+    },
+    cards: Array.isArray(payload.cards) ? payload.cards : [],
     allPrizeWinners: Array.isArray(payload.allPrizeWinners) ? payload.allPrizeWinners : Array.isArray(payload.winners) ? payload.winners : [],
     prizeProgress:
       payload.prizeProgress && typeof payload.prizeProgress === "object" && !Array.isArray(payload.prizeProgress)
@@ -236,6 +253,8 @@ export async function ensurePrimaryDisplayScreen(
     moduleType: ModuleType;
     themePresetId?: string | null;
     displayMode?: DisplayMode;
+    designWidth?: number;
+    designHeight?: number;
   },
 ) {
   const existing = await db.displayScreen.findFirst({
@@ -247,6 +266,21 @@ export async function ensurePrimaryDisplayScreen(
   });
 
   if (existing) {
+    if (
+      (input.designWidth && existing.designWidth !== input.designWidth) ||
+      (input.designHeight && existing.designHeight !== input.designHeight) ||
+      (input.displayMode && existing.displayMode !== input.displayMode)
+    ) {
+      return db.displayScreen.update({
+        where: { id: existing.id },
+        data: {
+          designWidth: input.designWidth ?? existing.designWidth,
+          designHeight: input.designHeight ?? existing.designHeight,
+          displayMode: input.displayMode ?? existing.displayMode,
+        },
+      });
+    }
+
     return existing;
   }
 
@@ -264,6 +298,8 @@ export async function ensurePrimaryDisplayScreen(
       isPrimary: true,
       themePresetId: input.themePresetId ?? null,
       displayMode: input.displayMode ?? "fullscreen",
+      designWidth: input.designWidth ?? 1920,
+      designHeight: input.designHeight ?? 1080,
     },
   });
 }
@@ -295,7 +331,19 @@ export function buildIdleLuckyDrawDisplay(input: {
     grid: {
       itemCount: 12,
     },
+    board: {
+      designWidth: 1920,
+      designHeight: 1080,
+      displayAmount: 12,
+      columns: 5,
+      rows: 3,
+    },
+    cards: [],
     progress: {
+      planned: 0,
+      actual: 0,
+    },
+    prizeProgress: {
       planned: 0,
       actual: 0,
     },

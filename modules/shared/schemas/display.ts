@@ -11,6 +11,20 @@ export const winnerChipSchema = z.object({
   emphasis: z.enum(["latest", "standard"]).default("standard"),
 });
 
+export const cleanBoardCardSchema = z.object({
+  id: z.string().optional(),
+  ticketNumber: z.string().optional(),
+  status: z.enum(["empty", "rolling", "revealed", "confirmed"]).default("empty"),
+});
+
+export const cleanBoardSettingsSchema = z.object({
+  designWidth: z.number().int().min(320).max(7680).default(1920),
+  designHeight: z.number().int().min(240).max(4320).default(1080),
+  displayAmount: z.number().int().min(1).max(120).default(12),
+  columns: z.number().int().min(1).max(120).default(4),
+  rows: z.number().int().min(1).max(120).default(3),
+});
+
 const displayEnvelopeBaseSchema = z.object({
   eventId: z.string(),
   eventSlug: z.string(),
@@ -36,10 +50,12 @@ export const luckyDrawDisplaySchema = displayEnvelopeBaseSchema.extend({
   animationPreset: luckyDrawAnimationPresetSchema,
   animationSpeed: z.number().min(0.25).max(3).default(1),
   grid: z.object({
-    itemCount: z.number().int().min(1).max(60),
-    rows: z.number().int().min(1).max(12).optional(),
-    cols: z.number().int().min(1).max(12).optional(),
+    itemCount: z.number().int().min(1).max(120),
+    rows: z.number().int().min(1).max(120).optional(),
+    cols: z.number().int().min(1).max(120).optional(),
   }),
+  board: cleanBoardSettingsSchema.default({}),
+  cards: z.array(cleanBoardCardSchema).default([]),
   progress: z.object({
     planned: z.number().int().min(0),
     actual: z.number().int().min(0),
@@ -85,6 +101,8 @@ export const liveDisplayEnvelopeSchema = z.discriminatedUnion("moduleType", [luc
 export type LuckyDrawScene = z.infer<typeof luckyDrawSceneSchema>;
 export type AuctionScene = z.infer<typeof auctionSceneSchema>;
 export type MasterScene = z.infer<typeof masterSceneSchema>;
+export type CleanBoardCard = z.infer<typeof cleanBoardCardSchema>;
+export type CleanBoardSettings = z.infer<typeof cleanBoardSettingsSchema>;
 export type LuckyDrawDisplayEnvelope = z.infer<typeof luckyDrawDisplaySchema>;
 export type AuctionDisplayEnvelope = z.infer<typeof auctionDisplaySchema>;
 export type MasterDisplayEnvelope = z.infer<typeof masterDisplaySchema>;

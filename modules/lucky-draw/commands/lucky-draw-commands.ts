@@ -1,4 +1,4 @@
-import type { AuditActionType, WinnerStatus } from "@prisma/client";
+import type { AuditActionType, DuplicatePolicy, WinnerStatus } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -8,7 +8,74 @@ import { defaultPrizeBoardSettings, layoutModeSchema, luckyDrawAnimationPresetSc
 import { validateTicketNumber } from "@/modules/shared/utils/ticket-format";
 
 const ACTIVE_WINNER_STATUSES: WinnerStatus[] = ["revealed", "confirmed"];
+const RESERVED_WINNER_STATUSES: WinnerStatus[] = ["draft", "revealed", "confirmed"];
 type DbClient = Prisma.TransactionClient | typeof prisma;
+
+function clampBoardNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
+function calculateCleanBoard(input: {
+  designWidth: number;
+  designHeight: number;
+  displayAmount: number;
+  gridCols?: number;
+  gridRows?: number;
+}) {
+  const designWidth = clampBoardNumber(input.designWidth, 320, 7680);
+  const designHeight = clampBoardNumber(input.designHeight, 240, 4320);
+  const displayAmount = clampBoardNumber(input.displayAmount, 1, 120);
+  const manualColumns = input.gridCols ? clampBoardNumber(input.gridCols, 1, 120) : null;
+  const manualRows = input.gridRows ? clampBoardNumber(input.gridRows, 1, 120) : null;
+  let columns = manualColumns ?? clampBoardNumber(Math.ceil(Math.sqrt(displayAmount * (designWidth / designHeight))), 1, displayAmount);
+  let rows = manualRows ?? clampBoardNumber(Math.ceil(displayAmount / columns), 1, displayAmount);
+
+  if (!manualRows) {
+    rows = clampBoardNumber(Math.ceil(displayAmount / columns), 1, 120);
+  }
+
+  if (!manualColumns) {
+    columns = clampBoardNumber(Math.ceil(displayAmount / rows), 1, 120);
+  }
+
+  if (rows * columns < displayAmount) {
+    rows = clampBoardNumber(Math.ceil(displayAmount / columns), 1, 120);
+  }
+
+  return {
+    designWidth,
+    designHeight,
+    displayAmount,
+    columns,
+    rows,
+  };
+}
+
+function shuffleTickets<T>(items: T[]) {
+  const shuffled = [...items];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+
+  return shuffled;
+}
+
+function resolveDrawSessionStatus(input: {
+  activeCount: number;
+  draftCount: number;
+  plannedWinnerCount: number;
+}) {
+  if (input.activeCount === 0 && input.draftCount === 0) {
+    return "draft" as const;
+  }
+
+  if (input.draftCount === 0 && input.activeCount >= input.plannedWinnerCount) {
+    return "completed" as const;
+  }
+
+  return "active" as const;
+}
 
 const prizeCategorySchema = z.object({
   eventId: z.string(),
@@ -47,9 +114,9 @@ const drawSessionSchema = z.object({
   name: z.string().min(2),
   plannedWinnerCount: z.number().int().min(1),
   layoutMode: layoutModeSchema.default("grid"),
-  gridItemCount: z.number().int().min(1).max(60).default(12),
-  gridRows: z.number().int().min(1).max(12).optional(),
-  gridCols: z.number().int().min(1).max(12).optional(),
+  gridItemCount: z.number().int().min(1).max(120).default(12),
+  gridRows: z.number().int().min(1).max(120).optional(),
+  gridCols: z.number().int().min(1).max(120).optional(),
   animationPresetOverride: luckyDrawAnimationPresetSchema.optional(),
   animationSpeedOverride: z.number().min(0.25).max(3).optional(),
   revealMode: z.enum(["manual", "digital_random"]).default("manual"),
@@ -61,9 +128,9 @@ const drawSessionUpdateSchema = z.object({
   name: z.string().min(2),
   plannedWinnerCount: z.number().int().min(1),
   layoutMode: layoutModeSchema.default("grid"),
-  gridItemCount: z.number().int().min(1).max(60).default(12),
-  gridRows: z.number().int().min(1).max(12).optional(),
-  gridCols: z.number().int().min(1).max(12).optional(),
+  gridItemCount: z.number().int().min(1).max(120).default(12),
+  gridRows: z.number().int().min(1).max(120).optional(),
+  gridCols: z.number().int().min(1).max(120).optional(),
   animationPresetOverride: luckyDrawAnimationPresetSchema.optional(),
   animationSpeedOverride: z.number().min(0.25).max(3).optional(),
   revealMode: z.enum(["manual", "digital_random"]).default("manual"),
@@ -83,6 +150,40 @@ const winnerMutationSchema = z.object({
   winnerId: z.string(),
   ticketNumber: z.string().optional(),
   note: z.string().optional(),
+});
+
+const simpleBoardCommandSchema = z.object({
+  drawSessionId: z.string(),
+  displayAmount: z.number().int().min(1).max(120).default(12),
+  designWidth: z.number().int().min(320).max(7680).default(1920),
+  designHeight: z.number().int().min(240).max(4320).default(1080),
+  gridRows: z.number().int().min(1).max(120).optional(),
+  gridCols: z.number().int().min(1).max(120).optional(),
+});
+
+const rollRandomWinnerBatchSchema = simpleBoardCommandSchema.extend({
+  eventId: z.string(),
+  prizeCategoryId: z.string(),
+  drawAmount: z.number().int().min(1).max(100),
+});
+
+const drawSessionOnlySchema = z.object({
+  drawSessionId: z.string(),
+});
+
+const winnerBoardMutationSchema = winnerMutationSchema.extend({
+  displayAmount: z.number().int().min(1).max(120).default(12),
+  designWidth: z.number().int().min(320).max(7680).default(1920),
+  designHeight: z.number().int().min(240).max(4320).default(1080),
+  gridRows: z.number().int().min(1).max(120).optional(),
+  gridCols: z.number().int().min(1).max(120).optional(),
+});
+
+const simpleBoardSettingsSchema = simpleBoardCommandSchema.extend({
+  prizeCategoryId: z.string(),
+  animationPreset: luckyDrawAnimationPresetSchema.default("fade_pop"),
+  animationSpeed: z.number().min(0.25).max(3).default(1),
+  boardSettings: prizeBoardSettingsSchema,
 });
 
 async function publishLatestPrizeStateIfPresent(tx: DbClient, prizeCategoryId: string, eventId: string) {
@@ -159,7 +260,7 @@ async function assertDuplicatePolicy(
     eventId: input.eventId,
     ticketNumber: input.ticketNumber,
     status: {
-      in: ACTIVE_WINNER_STATUSES,
+      in: RESERVED_WINNER_STATUSES,
     },
     ...(input.ignoreWinnerId ? { id: { not: input.ignoreWinnerId } } : {}),
   } satisfies Prisma.WinnerWhereInput;
@@ -188,6 +289,75 @@ async function assertDuplicatePolicy(
   }
 
   return event;
+}
+
+async function selectRandomTickets(
+  tx: DbClient,
+  input: {
+    eventId: string;
+    prizeCategoryId: string;
+    duplicatePolicy: DuplicatePolicy;
+    count: number;
+    excludeTicketNumbers?: string[];
+  },
+) {
+  const candidates = await tx.ticketPool.findMany({
+    where: {
+      eventId: input.eventId,
+      eligible: true,
+    },
+    select: {
+      ticketNumber: true,
+    },
+    take: 20000,
+  });
+
+  if (candidates.length === 0) {
+    throw new Error("No eligible tickets are available for digital random draw.");
+  }
+
+  const reservedWinners = await tx.winner.findMany({
+    where: {
+      eventId: input.eventId,
+      status: {
+        in: RESERVED_WINNER_STATUSES,
+      },
+    },
+    select: {
+      ticketNumber: true,
+      prizeCategoryId: true,
+    },
+  });
+
+  const eventLockedTickets = new Set(reservedWinners.map((winner) => winner.ticketNumber));
+  const categoryLockedTickets = new Set(
+    reservedWinners
+      .filter((winner) => winner.prizeCategoryId === input.prizeCategoryId)
+      .map((winner) => winner.ticketNumber),
+  );
+  const extraExcludedTickets = new Set(input.excludeTicketNumbers ?? []);
+  const uniqueCandidateTickets = Array.from(new Set(candidates.map((candidate) => candidate.ticketNumber)));
+  const availableCandidates = shuffleTickets(uniqueCandidateTickets).filter((ticketNumber) => {
+    if (extraExcludedTickets.has(ticketNumber)) {
+      return false;
+    }
+
+    if (input.duplicatePolicy === "event") {
+      return !eventLockedTickets.has(ticketNumber);
+    }
+
+    if (input.duplicatePolicy === "category") {
+      return !categoryLockedTickets.has(ticketNumber);
+    }
+
+    return true;
+  });
+
+  if (availableCandidates.length < input.count) {
+    throw new Error(`Only ${availableCandidates.length} eligible ticket(s) remain for this draw.`);
+  }
+
+  return availableCandidates.slice(0, input.count);
 }
 
 async function buildLuckyDrawState(
@@ -240,6 +410,45 @@ async function buildLuckyDrawState(
     },
   });
   const visibleSessionWinners = winners.slice(-session.gridItemCount);
+  const board = calculateCleanBoard({
+    designWidth: screen.designWidth,
+    designHeight: screen.designHeight,
+    displayAmount: session.gridItemCount,
+    gridRows: session.gridRows ?? undefined,
+    gridCols: session.gridCols ?? undefined,
+  });
+  const boardWinners = await tx.winner.findMany({
+    where: {
+      drawSessionId: session.id,
+      status: {
+        in: RESERVED_WINNER_STATUSES,
+      },
+    },
+    orderBy: {
+      revealOrder: "asc",
+    },
+    select: {
+      id: true,
+      ticketNumber: true,
+      status: true,
+    },
+  });
+  const visibleCards = boardWinners.slice(-board.displayAmount).map((winner) => ({
+    id: winner.id,
+    ticketNumber: winner.status === "draft" ? undefined : winner.ticketNumber,
+    status:
+      winner.status === "draft"
+        ? "rolling"
+        : winner.status === "confirmed"
+          ? "confirmed"
+          : "revealed",
+  }));
+  const cards = [
+    ...visibleCards,
+    ...Array.from({ length: Math.max(0, board.displayAmount - visibleCards.length) }).map(() => ({
+      status: "empty" as const,
+    })),
+  ];
 
   const allPrizeWinners = await tx.winner.findMany({
     where: {
@@ -312,6 +521,8 @@ async function buildLuckyDrawState(
       rows: session.gridRows ?? undefined,
       cols: session.gridCols ?? undefined,
     },
+    board,
+    cards,
     progress: {
       planned: session.plannedWinnerCount,
       actual: session.actualWinnerCount,
@@ -780,7 +991,7 @@ export async function drawRandomWinner(input: Omit<z.input<typeof revealSchema>,
     where: {
       eventId: payload.eventId,
       status: {
-        in: ACTIVE_WINNER_STATUSES,
+        in: RESERVED_WINNER_STATUSES,
       },
     },
     select: {
@@ -821,6 +1032,746 @@ export async function drawRandomWinner(input: Omit<z.input<typeof revealSchema>,
     },
     actor,
   );
+}
+
+export async function rollRandomWinnerBatch(input: z.input<typeof rollRandomWinnerBatchSchema>, actor: string) {
+  const payload = rollRandomWinnerBatchSchema.parse(input);
+  const board = calculateCleanBoard({
+    ...payload,
+    displayAmount: Math.max(payload.displayAmount, payload.drawAmount),
+  });
+
+  return prisma.$transaction(async (tx) => {
+    const event = await tx.event.findUniqueOrThrow({
+      where: { id: payload.eventId },
+    });
+    const prize = await tx.prizeCategory.findUniqueOrThrow({
+      where: { id: payload.prizeCategoryId },
+    });
+    const session = await tx.drawSession.findUniqueOrThrow({
+      where: { id: payload.drawSessionId },
+    });
+
+    if (prize.eventId !== event.id || session.eventId !== event.id || session.prizeCategoryId !== prize.id) {
+      throw new Error("The selected event, prize, and session do not match.");
+    }
+
+    await ensurePrimaryDisplayScreen(tx, {
+      eventId: event.id,
+      eventSlug: event.slug,
+      moduleType: "lucky_draw",
+      themePresetId: prize.specialThemeId ?? event.defaultThemeId,
+      displayMode: "fullscreen",
+      designWidth: board.designWidth,
+      designHeight: board.designHeight,
+    });
+
+    const selectedTickets = await selectRandomTickets(tx, {
+      eventId: event.id,
+      prizeCategoryId: prize.id,
+      duplicatePolicy: event.duplicatePolicy,
+      count: payload.drawAmount,
+    });
+    const [reservedSessionCount, reservedPrizeCount] = await Promise.all([
+      tx.winner.count({
+        where: {
+          drawSessionId: session.id,
+          status: {
+            in: RESERVED_WINNER_STATUSES,
+          },
+        },
+      }),
+      tx.winner.count({
+        where: {
+          prizeCategoryId: prize.id,
+          status: {
+            in: RESERVED_WINNER_STATUSES,
+          },
+        },
+      }),
+    ]);
+
+    const nextSessionPlannedCount = Math.max(session.plannedWinnerCount, reservedSessionCount + selectedTickets.length);
+    const nextPrizeQuantity = Math.max(prize.quantity, reservedPrizeCount + selectedTickets.length);
+
+    if (nextPrizeQuantity !== prize.quantity) {
+      await tx.prizeCategory.update({
+        where: { id: prize.id },
+        data: {
+          quantity: nextPrizeQuantity,
+        },
+      });
+    }
+
+    await tx.drawSession.update({
+      where: { id: session.id },
+      data: {
+        plannedWinnerCount: nextSessionPlannedCount,
+        gridItemCount: board.displayAmount,
+        gridRows: board.rows,
+        gridCols: board.columns,
+        lastRevealOrder: {
+          increment: selectedTickets.length,
+        },
+        revision: {
+          increment: 1,
+        },
+        status: "active",
+      },
+    });
+
+    const winners = [];
+    for (const [index, ticketNumber] of selectedTickets.entries()) {
+      winners.push(
+        await tx.winner.create({
+          data: {
+            eventId: event.id,
+            prizeCategoryId: prize.id,
+            drawSessionId: session.id,
+            ticketNumber,
+            revealOrder: session.lastRevealOrder + index + 1,
+            status: "draft",
+            revealSource: "digital_random",
+          },
+        }),
+      );
+    }
+
+    await audit(tx, {
+      eventId: event.id,
+      actionType: "display_published",
+      actor,
+      targetType: "draw_session",
+      targetId: session.id,
+      payload: {
+        action: "roll_random_winner_batch",
+        drawAmount: winners.length,
+        displayAmount: board.displayAmount,
+        designWidth: board.designWidth,
+        designHeight: board.designHeight,
+      },
+    });
+
+    const state = await buildLuckyDrawState(tx, {
+      eventId: event.id,
+      prizeCategoryId: prize.id,
+      drawSessionId: session.id,
+      scene: "revealing",
+      cue: `${winners.length} winning card${winners.length === 1 ? "" : "s"} rolling.`,
+    });
+
+    await publishDisplayState(tx, state);
+
+    return {
+      winners,
+      state,
+    };
+  });
+}
+
+export async function updateSimpleDrawBoardSettings(input: z.input<typeof simpleBoardSettingsSchema>, actor: string) {
+  const payload = simpleBoardSettingsSchema.parse(input);
+  const board = calculateCleanBoard(payload);
+
+  return prisma.$transaction(async (tx) => {
+    const session = await tx.drawSession.findUniqueOrThrow({
+      where: { id: payload.drawSessionId },
+    });
+    const prize = await tx.prizeCategory.findUniqueOrThrow({
+      where: { id: payload.prizeCategoryId },
+    });
+    const event = await tx.event.findUniqueOrThrow({
+      where: { id: session.eventId },
+    });
+
+    if (session.prizeCategoryId !== prize.id) {
+      throw new Error("The selected session does not belong to this prize.");
+    }
+
+    await ensurePrimaryDisplayScreen(tx, {
+      eventId: event.id,
+      eventSlug: event.slug,
+      moduleType: "lucky_draw",
+      themePresetId: prize.specialThemeId ?? event.defaultThemeId,
+      displayMode: "fullscreen",
+      designWidth: board.designWidth,
+      designHeight: board.designHeight,
+    });
+
+    await tx.prizeCategory.update({
+      where: { id: prize.id },
+      data: {
+        animationPreset: payload.animationPreset,
+        animationSpeed: payload.animationSpeed,
+        boardSettings: JSON.parse(JSON.stringify(payload.boardSettings)) as Prisma.InputJsonValue,
+      },
+    });
+
+    await tx.drawSession.update({
+      where: { id: session.id },
+      data: {
+        gridItemCount: board.displayAmount,
+        gridRows: board.rows,
+        gridCols: board.columns,
+        animationPresetOverride: payload.animationPreset,
+        animationSpeedOverride: payload.animationSpeed,
+        revision: {
+          increment: 1,
+        },
+      },
+    });
+
+    await audit(tx, {
+      eventId: event.id,
+      actionType: "display_published",
+      actor,
+      targetType: "draw_session",
+      targetId: session.id,
+      payload: {
+        action: "update_simple_draw_board_settings",
+        displayAmount: board.displayAmount,
+        designWidth: board.designWidth,
+        designHeight: board.designHeight,
+        animationPreset: payload.animationPreset,
+        animationSpeed: payload.animationSpeed,
+      },
+    });
+
+    const state = await buildLuckyDrawState(tx, {
+      eventId: event.id,
+      prizeCategoryId: prize.id,
+      drawSessionId: session.id,
+      cue: "Clean board settings updated.",
+      replayToken: Date.now(),
+    });
+
+    await publishDisplayState(tx, state);
+    return state;
+  });
+}
+
+export async function resetSimpleDrawSession(input: z.input<typeof simpleBoardCommandSchema>, actor: string) {
+  const payload = simpleBoardCommandSchema.parse(input);
+  const board = calculateCleanBoard(payload);
+
+  return prisma.$transaction(async (tx) => {
+    const session = await tx.drawSession.findUniqueOrThrow({
+      where: { id: payload.drawSessionId },
+    });
+    const event = await tx.event.findUniqueOrThrow({
+      where: { id: session.eventId },
+    });
+    const prize = await tx.prizeCategory.findUniqueOrThrow({
+      where: { id: session.prizeCategoryId },
+    });
+
+    await ensurePrimaryDisplayScreen(tx, {
+      eventId: event.id,
+      eventSlug: event.slug,
+      moduleType: "lucky_draw",
+      themePresetId: prize.specialThemeId ?? event.defaultThemeId,
+      displayMode: "fullscreen",
+      designWidth: board.designWidth,
+      designHeight: board.designHeight,
+    });
+
+    const deletedCount = await tx.winner.count({
+      where: {
+        drawSessionId: session.id,
+      },
+    });
+
+    await tx.winner.deleteMany({
+      where: {
+        drawSessionId: session.id,
+      },
+    });
+
+    await tx.drawSession.update({
+      where: { id: session.id },
+      data: {
+        actualWinnerCount: 0,
+        lastRevealOrder: 0,
+        gridItemCount: board.displayAmount,
+        gridRows: board.rows,
+        gridCols: board.columns,
+        revision: {
+          increment: 1,
+        },
+        status: "draft",
+      },
+    });
+
+    await audit(tx, {
+      eventId: event.id,
+      actionType: "display_published",
+      actor,
+      targetType: "draw_session",
+      targetId: session.id,
+      payload: {
+        action: "reset_simple_draw_session",
+        deletedCount,
+        displayAmount: board.displayAmount,
+        designWidth: board.designWidth,
+        designHeight: board.designHeight,
+        gridRows: board.rows,
+        gridCols: board.columns,
+      },
+    });
+
+    const state = await buildLuckyDrawState(tx, {
+      eventId: event.id,
+      prizeCategoryId: prize.id,
+      drawSessionId: session.id,
+      scene: "ready",
+      cue: "Draw reset. The board is clear.",
+      replayToken: Date.now(),
+    });
+
+    await publishDisplayState(tx, state);
+    return state;
+  });
+}
+
+export async function revealNextDraftWinner(input: z.input<typeof drawSessionOnlySchema>, actor: string) {
+  const payload = drawSessionOnlySchema.parse(input);
+
+  return prisma.$transaction(async (tx) => {
+    const winner = await tx.winner.findFirst({
+      where: {
+        drawSessionId: payload.drawSessionId,
+        status: "draft",
+      },
+      orderBy: {
+        revealOrder: "asc",
+      },
+    });
+
+    if (!winner) {
+      throw new Error("There are no rolling winners waiting to reveal.");
+    }
+
+    const session = await tx.drawSession.findUniqueOrThrow({
+      where: { id: winner.drawSessionId },
+    });
+
+    const updatedWinner = await tx.winner.update({
+      where: { id: winner.id },
+      data: {
+        status: "revealed",
+      },
+    });
+    const [activeCount, draftCount] = await Promise.all([
+      tx.winner.count({
+        where: {
+          drawSessionId: session.id,
+          status: {
+            in: ACTIVE_WINNER_STATUSES,
+          },
+        },
+      }),
+      tx.winner.count({
+        where: {
+          drawSessionId: session.id,
+          status: "draft",
+        },
+      }),
+    ]);
+
+    await tx.drawSession.update({
+      where: { id: session.id },
+      data: {
+        actualWinnerCount: activeCount,
+        revision: {
+          increment: 1,
+        },
+        status: resolveDrawSessionStatus({
+          activeCount,
+          draftCount,
+          plannedWinnerCount: session.plannedWinnerCount,
+        }),
+      },
+    });
+
+    await audit(tx, {
+      eventId: winner.eventId,
+      actionType: "winner_revealed",
+      actor,
+      targetType: "winner",
+      targetId: winner.id,
+      payload: {
+        drawSessionId: winner.drawSessionId,
+        prizeCategoryId: winner.prizeCategoryId,
+        ticketNumber: winner.ticketNumber,
+        revealSource: winner.revealSource,
+        batchReveal: true,
+      },
+    });
+
+    const state = await buildLuckyDrawState(tx, {
+      eventId: winner.eventId,
+      prizeCategoryId: winner.prizeCategoryId,
+      drawSessionId: winner.drawSessionId,
+      latestWinningNumber: updatedWinner.ticketNumber,
+      scene: "revealed",
+      cue: draftCount > 0 ? `${draftCount} rolling card${draftCount === 1 ? "" : "s"} still waiting.` : "All rolling cards have been revealed.",
+    });
+
+    await publishDisplayState(tx, state);
+
+    return {
+      winner: updatedWinner,
+      state,
+    };
+  });
+}
+
+export async function validateWinner(input: z.input<typeof winnerMutationSchema>, actor: string) {
+  const payload = winnerMutationSchema.parse(input);
+
+  return prisma.$transaction(async (tx) => {
+    const winner = await tx.winner.findUniqueOrThrow({
+      where: { id: payload.winnerId },
+    });
+
+    if (winner.status === "draft") {
+      throw new Error("Reveal this rolling card before validating it.");
+    }
+
+    if (winner.status !== "revealed" && winner.status !== "confirmed") {
+      throw new Error("Only revealed winners can be validated.");
+    }
+
+    const updatedWinner = await tx.winner.update({
+      where: { id: winner.id },
+      data: {
+        status: "confirmed",
+        notes: payload.note || winner.notes,
+      },
+    });
+
+    await audit(tx, {
+      eventId: winner.eventId,
+      actionType: "winner_edited",
+      actor,
+      targetType: "winner",
+      targetId: winner.id,
+      payload: {
+        ticketNumber: winner.ticketNumber,
+        status: "confirmed",
+      },
+    });
+
+    const state = await buildLuckyDrawState(tx, {
+      eventId: winner.eventId,
+      prizeCategoryId: winner.prizeCategoryId,
+      drawSessionId: winner.drawSessionId,
+      latestWinningNumber: winner.ticketNumber,
+      cue: "Winner validated.",
+    });
+
+    await publishDisplayState(tx, state);
+    return updatedWinner;
+  });
+}
+
+export async function deleteWinner(input: z.input<typeof winnerMutationSchema>, actor: string) {
+  const payload = winnerMutationSchema.parse(input);
+
+  return prisma.$transaction(async (tx) => {
+    const winner = await tx.winner.findUniqueOrThrow({
+      where: { id: payload.winnerId },
+    });
+    const session = await tx.drawSession.findUniqueOrThrow({
+      where: { id: winner.drawSessionId },
+    });
+
+    await tx.winner.delete({
+      where: { id: winner.id },
+    });
+
+    const [activeCount, draftCount] = await Promise.all([
+      tx.winner.count({
+        where: {
+          drawSessionId: session.id,
+          status: {
+            in: ACTIVE_WINNER_STATUSES,
+          },
+        },
+      }),
+      tx.winner.count({
+        where: {
+          drawSessionId: session.id,
+          status: "draft",
+        },
+      }),
+    ]);
+
+    await tx.drawSession.update({
+      where: { id: session.id },
+      data: {
+        actualWinnerCount: activeCount,
+        revision: {
+          increment: 1,
+        },
+        status: resolveDrawSessionStatus({
+          activeCount,
+          draftCount,
+          plannedWinnerCount: session.plannedWinnerCount,
+        }),
+      },
+    });
+
+    await audit(tx, {
+      eventId: winner.eventId,
+      actionType: "winner_deleted",
+      actor,
+      targetType: "winner",
+      targetId: winner.id,
+      payload: {
+        ticketNumber: winner.ticketNumber,
+        previousStatus: winner.status,
+      },
+    });
+
+    const state = await buildLuckyDrawState(tx, {
+      eventId: winner.eventId,
+      prizeCategoryId: winner.prizeCategoryId,
+      drawSessionId: winner.drawSessionId,
+      cue: "Winner deleted from the live board.",
+    });
+
+    await publishDisplayState(tx, state);
+    return state;
+  });
+}
+
+export async function redrawWinnerRandom(input: z.input<typeof winnerBoardMutationSchema>, actor: string) {
+  const payload = winnerBoardMutationSchema.parse(input);
+  const board = calculateCleanBoard(payload);
+
+  return prisma.$transaction(async (tx) => {
+    const winner = await tx.winner.findUniqueOrThrow({
+      where: { id: payload.winnerId },
+    });
+    const session = await tx.drawSession.findUniqueOrThrow({
+      where: { id: winner.drawSessionId },
+    });
+    const event = await tx.event.findUniqueOrThrow({
+      where: { id: winner.eventId },
+    });
+    const prize = await tx.prizeCategory.findUniqueOrThrow({
+      where: { id: winner.prizeCategoryId },
+    });
+
+    await ensurePrimaryDisplayScreen(tx, {
+      eventId: event.id,
+      eventSlug: event.slug,
+      moduleType: "lucky_draw",
+      themePresetId: prize.specialThemeId ?? event.defaultThemeId,
+      displayMode: "fullscreen",
+      designWidth: board.designWidth,
+      designHeight: board.designHeight,
+    });
+
+    await tx.winner.update({
+      where: { id: winner.id },
+      data: {
+        status: "redrawn",
+        notes: payload.note || winner.notes,
+      },
+    });
+
+    const selectedTickets = await selectRandomTickets(tx, {
+      eventId: event.id,
+      prizeCategoryId: prize.id,
+      duplicatePolicy: event.duplicatePolicy,
+      count: 1,
+      excludeTicketNumbers: [winner.ticketNumber],
+    });
+    const replacementTicket = selectedTickets[0];
+    const reservedSessionCount = await tx.winner.count({
+      where: {
+        drawSessionId: session.id,
+        status: {
+          in: RESERVED_WINNER_STATUSES,
+        },
+      },
+    });
+    const reservedPrizeCount = await tx.winner.count({
+      where: {
+        prizeCategoryId: prize.id,
+        status: {
+          in: RESERVED_WINNER_STATUSES,
+        },
+      },
+    });
+    const nextSessionPlannedCount = Math.max(session.plannedWinnerCount, reservedSessionCount + 1);
+    const nextPrizeQuantity = Math.max(prize.quantity, reservedPrizeCount + 1);
+
+    if (nextPrizeQuantity !== prize.quantity) {
+      await tx.prizeCategory.update({
+        where: { id: prize.id },
+        data: {
+          quantity: nextPrizeQuantity,
+        },
+      });
+    }
+
+    await tx.drawSession.update({
+      where: { id: session.id },
+      data: {
+        plannedWinnerCount: nextSessionPlannedCount,
+        gridItemCount: board.displayAmount,
+        gridRows: board.rows,
+        gridCols: board.columns,
+        lastRevealOrder: {
+          increment: 1,
+        },
+        actualWinnerCount: await tx.winner.count({
+          where: {
+            drawSessionId: session.id,
+            status: {
+              in: ACTIVE_WINNER_STATUSES,
+            },
+          },
+        }),
+        revision: {
+          increment: 1,
+        },
+        status: "active",
+      },
+    });
+
+    const replacementWinner = await tx.winner.create({
+      data: {
+        eventId: event.id,
+        prizeCategoryId: prize.id,
+        drawSessionId: session.id,
+        ticketNumber: replacementTicket,
+        revealOrder: session.lastRevealOrder + 1,
+        status: "draft",
+        revealSource: "digital_random",
+        redrawOfId: winner.id,
+      },
+    });
+
+    await audit(tx, {
+      eventId: winner.eventId,
+      actionType: "winner_redrawn",
+      actor,
+      targetType: "winner",
+      targetId: winner.id,
+      payload: {
+        previousTicketNumber: winner.ticketNumber,
+        replacementWinnerId: replacementWinner.id,
+      },
+    });
+
+    const state = await buildLuckyDrawState(tx, {
+      eventId: event.id,
+      prizeCategoryId: prize.id,
+      drawSessionId: session.id,
+      scene: "revealing",
+      cue: "Replacement card is rolling.",
+    });
+
+    await publishDisplayState(tx, state);
+
+    return {
+      winner: replacementWinner,
+      state,
+    };
+  });
+}
+
+export async function cancelPendingRoll(input: z.input<typeof drawSessionOnlySchema>, actor: string) {
+  const payload = drawSessionOnlySchema.parse(input);
+
+  return prisma.$transaction(async (tx) => {
+    const session = await tx.drawSession.findUniqueOrThrow({
+      where: { id: payload.drawSessionId },
+    });
+    const pendingWinners = await tx.winner.findMany({
+      where: {
+        drawSessionId: session.id,
+        status: "draft",
+      },
+      select: {
+        id: true,
+        ticketNumber: true,
+      },
+    });
+
+    if (pendingWinners.length === 0) {
+      throw new Error("There are no rolling cards to cancel.");
+    }
+
+    await tx.winner.updateMany({
+      where: {
+        id: {
+          in: pendingWinners.map((winner) => winner.id),
+        },
+      },
+      data: {
+        status: "deleted",
+      },
+    });
+
+    const [activeCount, draftCount] = await Promise.all([
+      tx.winner.count({
+        where: {
+          drawSessionId: session.id,
+          status: {
+            in: ACTIVE_WINNER_STATUSES,
+          },
+        },
+      }),
+      tx.winner.count({
+        where: {
+          drawSessionId: session.id,
+          status: "draft",
+        },
+      }),
+    ]);
+
+    await tx.drawSession.update({
+      where: { id: session.id },
+      data: {
+        actualWinnerCount: activeCount,
+        revision: {
+          increment: 1,
+        },
+        status: resolveDrawSessionStatus({
+          activeCount,
+          draftCount,
+          plannedWinnerCount: session.plannedWinnerCount,
+        }),
+      },
+    });
+
+    await audit(tx, {
+      eventId: session.eventId,
+      actionType: "display_published",
+      actor,
+      targetType: "draw_session",
+      targetId: session.id,
+      payload: {
+        action: "cancel_pending_roll",
+        cancelledCount: pendingWinners.length,
+      },
+    });
+
+    const state = await buildLuckyDrawState(tx, {
+      eventId: session.eventId,
+      prizeCategoryId: session.prizeCategoryId,
+      drawSessionId: session.id,
+      cue: "Pending rolling cards were cancelled.",
+    });
+
+    await publishDisplayState(tx, state);
+    return state;
+  });
 }
 
 export async function invalidateWinner(input: z.input<typeof winnerMutationSchema>, actor: string) {

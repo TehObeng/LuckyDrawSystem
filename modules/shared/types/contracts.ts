@@ -1,6 +1,8 @@
 export type {
   AuctionDisplayEnvelope,
   AuctionScene,
+  CleanBoardCard,
+  CleanBoardSettings,
   LiveDisplayEnvelope,
   LuckyDrawDisplayEnvelope,
   LuckyDrawScene,
@@ -10,6 +12,8 @@ export type {
 export {
   auctionDisplaySchema,
   auctionSceneSchema,
+  cleanBoardCardSchema,
+  cleanBoardSettingsSchema,
   liveDisplayEnvelopeSchema,
   luckyDrawDisplaySchema,
   luckyDrawSceneSchema,

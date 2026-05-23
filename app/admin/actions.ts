@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { createAuctionLot, createAuctionSession, cueAuctionLot, clearAuctionDisplay, markLotPassed, markLotSold, parseBidAmount, placeBid, undoLastBid } from "@/modules/auction/commands/auction-commands";
-import { clearLuckyDrawDisplay, createDrawSession, createPrizeCategory, deleteDrawSession, deletePrizeCategory, drawRandomWinner, editWinnerTicket, invalidateWinner, redrawWinner, replayLuckyDrawAnimation, revealWinner, undoLastReveal, updateDrawSession, updatePrizeBoardSettings, updatePrizeCategory } from "@/modules/lucky-draw/commands/lucky-draw-commands";
+import { cancelPendingRoll, clearLuckyDrawDisplay, createDrawSession, createPrizeCategory, deleteDrawSession, deletePrizeCategory, deleteWinner, drawRandomWinner, editWinnerTicket, invalidateWinner, redrawWinner, redrawWinnerRandom, replayLuckyDrawAnimation, resetSimpleDrawSession, revealNextDraftWinner, revealWinner, rollRandomWinnerBatch, undoLastReveal, updateDrawSession, updatePrizeBoardSettings, updatePrizeCategory, updateSimpleDrawBoardSettings, validateWinner } from "@/modules/lucky-draw/commands/lucky-draw-commands";
 import { archiveEvent, createEvent, createMediaAssetRecord, createThemePreset, updateEvent, updateEventSettings, updateMediaAssetRecord, updateThemePreset } from "@/modules/shared/commands/platform-commands";
 import { publishMasterDisplaySelection } from "@/modules/shared/services/display-state-service";
 import { importAuctionLotsFromCsv, importTicketPoolFromCsv } from "@/modules/shared/services/import-export-service";
@@ -12,7 +12,7 @@ import { defaultEventSettings, defaultPrizeBoardSettings, defaultTicketFormat, d
 import { getCurrentOperator } from "@/lib/auth/operator";
 import { prisma } from "@/lib/prisma";
 
-const ADMIN_PATHS = ["/admin", "/admin/events", "/admin/themes", "/admin/settings", "/admin/debug", "/admin/lucky-draw", "/admin/auction", "/admin/imports", "/admin/audit", "/admin/live"];
+const ADMIN_PATHS = ["/admin", "/admin/events", "/admin/themes", "/admin/settings", "/admin/debug", "/admin/lucky-draw", "/admin/simple-lucky-draw", "/admin/auction", "/admin/imports", "/admin/audit", "/admin/live"];
 
 function getString(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -181,11 +181,29 @@ function parsePrizeBoardSettingsFromForm(formData: FormData) {
     cardMinHeight: getNumber(formData, "cardMinHeight", defaultPrizeBoardSettings.cardMinHeight),
     boardMaxWidth: getNumber(formData, "boardMaxWidth", defaultPrizeBoardSettings.boardMaxWidth),
     gap: getNumber(formData, "gap", defaultPrizeBoardSettings.gap),
+    cleanGridGap: getNumber(formData, "cleanGridGap", defaultPrizeBoardSettings.cleanGridGap),
+    cleanGridPadding: getNumber(formData, "cleanGridPadding", defaultPrizeBoardSettings.cleanGridPadding),
     fontFamily: getString(formData, "fontFamily") || defaultPrizeBoardSettings.fontFamily,
     winnerLabelFontSize: getNumber(formData, "winnerLabelFontSize", defaultPrizeBoardSettings.winnerLabelFontSize),
     fontSize: getNumber(formData, "fontSize", defaultPrizeBoardSettings.fontSize),
     numberFontSize: getNumber(formData, "numberFontSize", defaultPrizeBoardSettings.numberFontSize),
     fontWeight: getNumber(formData, "fontWeight", defaultPrizeBoardSettings.fontWeight),
+    pageBackgroundMode: getString(formData, "pageBackgroundMode") === "color" ? "color" : "transparent",
+    pageBackgroundColor: getString(formData, "pageBackgroundColor") || defaultPrizeBoardSettings.pageBackgroundColor,
+    gridBackgroundMode: getString(formData, "gridBackgroundMode") === "color" ? "color" : "transparent",
+    gridBackgroundColor: getString(formData, "gridBackgroundColor") || defaultPrizeBoardSettings.gridBackgroundColor,
+    emptyCardBackgroundColor: getString(formData, "emptyCardBackgroundColor") || defaultPrizeBoardSettings.emptyCardBackgroundColor,
+    rollingCardBackgroundColor: getString(formData, "rollingCardBackgroundColor") || defaultPrizeBoardSettings.rollingCardBackgroundColor,
+    revealedCardBackgroundColor: getString(formData, "revealedCardBackgroundColor") || defaultPrizeBoardSettings.revealedCardBackgroundColor,
+    confirmedCardBackgroundColor: getString(formData, "confirmedCardBackgroundColor") || defaultPrizeBoardSettings.confirmedCardBackgroundColor,
+    cardBorderColor: getString(formData, "cardBorderColor") || defaultPrizeBoardSettings.cardBorderColor,
+    rollingBorderColor: getString(formData, "rollingBorderColor") || defaultPrizeBoardSettings.rollingBorderColor,
+    revealedBorderColor: getString(formData, "revealedBorderColor") || defaultPrizeBoardSettings.revealedBorderColor,
+    confirmedBorderColor: getString(formData, "confirmedBorderColor") || defaultPrizeBoardSettings.confirmedBorderColor,
+    numberColor: getString(formData, "numberColor") || defaultPrizeBoardSettings.numberColor,
+    confirmedNumberColor: getString(formData, "confirmedNumberColor") || defaultPrizeBoardSettings.confirmedNumberColor,
+    rollingNumberColor: getString(formData, "rollingNumberColor") || defaultPrizeBoardSettings.rollingNumberColor,
+    waitingTextColor: getString(formData, "waitingTextColor") || defaultPrizeBoardSettings.waitingTextColor,
   });
 }
 
@@ -355,6 +373,27 @@ export async function createDrawSessionAction(formData: FormData) {
   }, { fallbackPath: "/admin/lucky-draw" });
 }
 
+export async function simpleCreateDrawSessionAction(formData: FormData) {
+  await runAdminAction(async (operator) => {
+    await createDrawSession(
+      {
+        eventId: getString(formData, "eventId"),
+        prizeCategoryId: getString(formData, "prizeCategoryId"),
+        name: getString(formData, "name"),
+        plannedWinnerCount: getNumber(formData, "plannedWinnerCount", 1),
+        layoutMode: "grid",
+        gridItemCount: getNumber(formData, "displayAmount", 12),
+        gridRows: getString(formData, "gridRows") ? getNumber(formData, "gridRows") : undefined,
+        gridCols: getString(formData, "gridCols") ? getNumber(formData, "gridCols") : undefined,
+        revealMode: "digital_random",
+      },
+      operator.displayName,
+    );
+
+    return "Simple draw session created.";
+  }, { fallbackPath: "/admin/simple-lucky-draw" });
+}
+
 export async function updateDrawSessionAction(formData: FormData) {
   await runAdminAction(async (operator) => {
     await updateDrawSession(
@@ -495,6 +534,154 @@ export async function digitalRandomWinnerAction(formData: FormData) {
 
     return "Digital random reveal completed.";
   }, { fallbackPath: "/admin/live" });
+}
+
+export async function simpleRollRandomWinnerBatchAction(formData: FormData) {
+  return runInlineAdminAction(async (operator) => {
+    await rollRandomWinnerBatch(
+      {
+        eventId: getString(formData, "eventId"),
+        prizeCategoryId: getString(formData, "prizeCategoryId"),
+        drawSessionId: getString(formData, "drawSessionId"),
+        drawAmount: getNumber(formData, "drawAmount", 1),
+        displayAmount: getNumber(formData, "displayAmount", 12),
+        designWidth: getNumber(formData, "designWidth", 1920),
+        designHeight: getNumber(formData, "designHeight", 1080),
+        gridRows: getString(formData, "gridRows") ? getNumber(formData, "gridRows") : undefined,
+        gridCols: getString(formData, "gridCols") ? getNumber(formData, "gridCols") : undefined,
+      },
+      operator.displayName,
+    );
+
+    return "Rolling cards sent to the main screen.";
+  }, { fallbackPath: "/admin/simple-lucky-draw" });
+}
+
+export async function simpleUpdateBoardSettingsAction(formData: FormData) {
+  return runInlineAdminAction(async (operator) => {
+    await updateSimpleDrawBoardSettings(
+      {
+        prizeCategoryId: getString(formData, "prizeCategoryId"),
+        drawSessionId: getString(formData, "drawSessionId"),
+        displayAmount: getNumber(formData, "displayAmount", 12),
+        designWidth: getNumber(formData, "designWidth", 1920),
+        designHeight: getNumber(formData, "designHeight", 1080),
+        gridRows: getString(formData, "gridRows") ? getNumber(formData, "gridRows") : undefined,
+        gridCols: getString(formData, "gridCols") ? getNumber(formData, "gridCols") : undefined,
+        animationPreset: (getString(formData, "animationPreset") || "fade_pop") as "scramble" | "rolling" | "slot" | "flip" | "zoom" | "fade_pop" | "celebration_burst",
+        animationSpeed: getNumber(formData, "animationSpeed", 1),
+        boardSettings: parsePrizeBoardSettingsFromForm(formData),
+      },
+      operator.displayName,
+    );
+
+    return "Clean display settings updated.";
+  }, { fallbackPath: "/admin/simple-lucky-draw" });
+}
+
+export async function simpleResetDrawAction(formData: FormData) {
+  return runInlineAdminAction(async (operator) => {
+    await resetSimpleDrawSession(
+      {
+        drawSessionId: getString(formData, "drawSessionId"),
+        displayAmount: getNumber(formData, "displayAmount", 12),
+        designWidth: getNumber(formData, "designWidth", 1920),
+        designHeight: getNumber(formData, "designHeight", 1080),
+        gridRows: getString(formData, "gridRows") ? getNumber(formData, "gridRows") : undefined,
+        gridCols: getString(formData, "gridCols") ? getNumber(formData, "gridCols") : undefined,
+      },
+      operator.displayName,
+    );
+
+    return "Draw cleared and reset.";
+  }, { fallbackPath: "/admin/simple-lucky-draw" });
+}
+
+export async function simpleRevealNextWinnerAction(formData: FormData) {
+  return runInlineAdminAction(async (operator) => {
+    await revealNextDraftWinner(
+      {
+        drawSessionId: getString(formData, "drawSessionId"),
+      },
+      operator.displayName,
+    );
+
+    return "Next winner revealed.";
+  }, { fallbackPath: "/admin/simple-lucky-draw" });
+}
+
+export async function simpleValidateWinnerAction(formData: FormData) {
+  return runInlineAdminAction(async (operator) => {
+    await validateWinner(
+      {
+        winnerId: getString(formData, "winnerId"),
+        note: getOptionalString(formData, "note"),
+      },
+      operator.displayName,
+    );
+
+    return "Winner validated.";
+  }, { fallbackPath: "/admin/simple-lucky-draw" });
+}
+
+export async function simpleDeleteWinnerAction(formData: FormData) {
+  return runInlineAdminAction(async (operator) => {
+    await deleteWinner(
+      {
+        winnerId: getString(formData, "winnerId"),
+        note: getOptionalString(formData, "note"),
+      },
+      operator.displayName,
+    );
+
+    return "Winner deleted.";
+  }, { fallbackPath: "/admin/simple-lucky-draw" });
+}
+
+export async function simpleInvalidateWinnerAction(formData: FormData) {
+  return runInlineAdminAction(async (operator) => {
+    await invalidateWinner(
+      {
+        winnerId: getString(formData, "winnerId"),
+        note: getOptionalString(formData, "note"),
+      },
+      operator.displayName,
+    );
+
+    return "Winner invalidated.";
+  }, { fallbackPath: "/admin/simple-lucky-draw" });
+}
+
+export async function simpleRedrawWinnerRandomAction(formData: FormData) {
+  return runInlineAdminAction(async (operator) => {
+    await redrawWinnerRandom(
+      {
+        winnerId: getString(formData, "winnerId"),
+        note: getOptionalString(formData, "note"),
+        displayAmount: getNumber(formData, "displayAmount", 12),
+        designWidth: getNumber(formData, "designWidth", 1920),
+        designHeight: getNumber(formData, "designHeight", 1080),
+        gridRows: getString(formData, "gridRows") ? getNumber(formData, "gridRows") : undefined,
+        gridCols: getString(formData, "gridCols") ? getNumber(formData, "gridCols") : undefined,
+      },
+      operator.displayName,
+    );
+
+    return "Replacement card is rolling.";
+  }, { fallbackPath: "/admin/simple-lucky-draw" });
+}
+
+export async function simpleCancelPendingRollAction(formData: FormData) {
+  return runInlineAdminAction(async (operator) => {
+    await cancelPendingRoll(
+      {
+        drawSessionId: getString(formData, "drawSessionId"),
+      },
+      operator.displayName,
+    );
+
+    return "Pending rolling cards cancelled.";
+  }, { fallbackPath: "/admin/simple-lucky-draw" });
 }
 
 export async function invalidateWinnerAction(formData: FormData) {

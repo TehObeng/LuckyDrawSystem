@@ -137,6 +137,18 @@ function ThemeLiveDisplayPreview({ theme }: { theme: EditableThemeValue }) {
         rows: 3,
         cols: 4,
       },
+      board: {
+        designWidth: 1920,
+        designHeight: 1080,
+        displayAmount: 12,
+        columns: 5,
+        rows: 3,
+      },
+      cards: winners.map((winner) => ({
+        id: winner.id,
+        ticketNumber: winner.ticketNumber,
+        status: winner.emphasis === "latest" ? "confirmed" : "revealed",
+      })),
       progress: {
         planned: 11,
         actual: winners.length,

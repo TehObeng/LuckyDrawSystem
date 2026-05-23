@@ -201,6 +201,8 @@ model DisplayScreen {
   screenKey    String      @unique
   isPrimary    Boolean     @default(false)
   displayMode  DisplayMode @default(fullscreen)
+  designWidth  Int         @default(1920)
+  designHeight Int         @default(1080)
   themePresetId String?
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt

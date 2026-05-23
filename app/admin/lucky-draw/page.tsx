@@ -144,7 +144,7 @@ export default async function LuckyDrawAdminPage({ searchParams }: { searchParam
               </div>
               <div className="space-y-2">
                 <Label>Live overlay visible slots</Label>
-                <Input name="gridItemCount" type="number" min={1} max={60} defaultValue={12} />
+                <Input name="gridItemCount" type="number" min={1} max={120} defaultValue={12} />
                 <p className="text-xs text-slate-500">Example: set 33 planned winners and 11 visible slots to keep the live board showing only the latest 11 numbers.</p>
               </div>
               <div className="space-y-2">
@@ -332,7 +332,7 @@ export default async function LuckyDrawAdminPage({ searchParams }: { searchParam
                               </div>
                               <div className="space-y-2">
                                 <Label>Live visible slots</Label>
-                                <Input name="gridItemCount" type="number" min={1} max={60} defaultValue={session.gridItemCount} />
+                                <Input name="gridItemCount" type="number" min={1} max={120} defaultValue={session.gridItemCount} />
                               </div>
                               <div className="space-y-2">
                                 <Label>Layout</Label>

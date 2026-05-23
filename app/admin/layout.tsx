@@ -68,7 +68,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           </div>
         </aside>
 
-        <div className="space-y-6 py-2">
+        <div className="min-w-0 space-y-6 overflow-x-hidden py-2">
           <QueryNotice />
           {children}
         </div>
