@@ -1,10 +1,12 @@
 import type { CSSProperties } from "react";
+import { withBasePath } from "@/lib/public-path";
 import type { ThemeConfig } from "@/modules/shared/types/contracts";
 
 export function buildDisplayBackgroundStyle(theme: ThemeConfig, overlayMode: boolean): CSSProperties {
   const overlayAlpha = Math.max(0, Math.min(1, theme.overlayOpacity ?? 0.72));
   const useImage = theme.backgroundType === "image" && theme.backgroundImageUrl;
-  const imageLayer = useImage ? `, url("${theme.backgroundImageUrl}")` : "";
+  const imageUrl = useImage ? withBasePath(theme.backgroundImageUrl ?? "") : "";
+  const imageLayer = useImage ? `, url("${imageUrl}")` : "";
   const gradientStart = theme.backgroundColorStart ?? "#0f172a";
   const gradientEnd = theme.backgroundColorEnd ?? "#020617";
   const baseGradient = `linear-gradient(135deg, ${gradientStart} 0%, ${gradientEnd} 100%)`;

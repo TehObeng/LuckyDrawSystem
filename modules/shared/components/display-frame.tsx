@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { ThemeConfig } from "@/modules/shared/types/contracts";
+import { withBasePath } from "@/lib/public-path";
 import { cn } from "@/lib/utils";
 import { buildDisplayBackgroundStyle } from "@/modules/shared/utils/theme-styles";
 
@@ -112,7 +113,7 @@ export function DisplayFrame({
                   transform: `scale(${theme.logoScale})`,
                   transformOrigin: theme.logoPosition === "top_left" ? "top left" : theme.logoPosition === "top_center" ? "top center" : "top right",
                 }}
-                src={theme.logoUrl}
+                src={withBasePath(theme.logoUrl)}
               />
             ) : null}
             {meta && theme.showMetaPanel ? (

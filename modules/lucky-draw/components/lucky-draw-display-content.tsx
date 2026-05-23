@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
+import { withBasePath } from "@/lib/public-path";
 import { cn } from "@/lib/utils";
 import type { LuckyDrawAnimationPreset, LuckyDrawDisplayEnvelope, PrizeBoardSettings } from "@/modules/shared/types/contracts";
 
@@ -295,7 +296,7 @@ export function LuckyDrawDisplayContent({
             </div>
             {state.prizeImageUrl ? (
               <div className="overflow-hidden rounded-[1.6rem] border border-white/10 bg-white/[0.03]">
-                <img src={state.prizeImageUrl} alt={state.prizeName ?? "Prize"} className="h-full min-h-56 w-full object-cover" />
+                <img src={withBasePath(state.prizeImageUrl)} alt={state.prizeName ?? "Prize"} className="h-full min-h-56 w-full object-cover" />
               </div>
             ) : null}
           </div>

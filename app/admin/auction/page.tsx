@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/select";
 import { Surface, SurfaceCopy, SurfaceTitle } from "@/components/ui/surface";
 import { Textarea } from "@/components/ui/textarea";
 import { createAuctionLotAction, createAuctionSessionAction } from "@/app/admin/actions";
+import { withBasePath } from "@/lib/public-path";
 import { getWorkspaceSnapshot } from "@/modules/shared/services/workspace-query-service";
 import { formatCurrency } from "@/modules/shared/utils/formatters";
 
@@ -135,7 +136,7 @@ export default async function AuctionAdminPage({ searchParams }: { searchParams:
 
               {lot.displayImageUrl ? (
                 <div className="overflow-hidden rounded-[1.4rem] border border-white/10 bg-white/[0.03]">
-                  <img src={lot.displayImageUrl} alt={lot.title} className="h-48 w-full object-cover" />
+                  <img src={withBasePath(lot.displayImageUrl)} alt={lot.title} className="h-48 w-full object-cover" />
                 </div>
               ) : null}
 

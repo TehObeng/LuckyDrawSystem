@@ -1,8 +1,8 @@
 "use client";
 
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Copy, ExternalLink, Pause, Play, RefreshCw, RotateCcw, StepForward, Trash2, X } from "lucide-react";
+import { Copy, ExternalLink, Pencil, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,47 +54,23 @@ interface SimpleLuckyDrawWorkspaceProps {
   eventId: string;
   eventSlug: string;
   eventName: string;
-  prizes: SimplePrize[];
-  sessions: SimpleSession[];
+  prize: SimplePrize;
+  session: SimpleSession;
   initialDesignWidth: number;
   initialDesignHeight: number;
-  createSessionAction: (formData: FormData) => Promise<void>;
-  rollAction: (formData: FormData) => Promise<InlineActionResult>;
+  addWinnerAction: (formData: FormData) => Promise<InlineActionResult>;
+  editWinnerAction: (formData: FormData) => Promise<InlineActionResult>;
   updateBoardSettingsAction: (formData: FormData) => Promise<InlineActionResult>;
-  revealNextAction: (formData: FormData) => Promise<InlineActionResult>;
   resetDrawAction: (formData: FormData) => Promise<InlineActionResult>;
-  validateAction: (formData: FormData) => Promise<InlineActionResult>;
   deleteAction: (formData: FormData) => Promise<InlineActionResult>;
-  invalidateAction: (formData: FormData) => Promise<InlineActionResult>;
-  redrawAction: (formData: FormData) => Promise<InlineActionResult>;
-  cancelPendingAction: (formData: FormData) => Promise<InlineActionResult>;
 }
 
 const screenPresets = [
   { value: "1920x1080", label: "1920 x 1080", width: 1920, height: 1080 },
   { value: "1080x1920", label: "1080 x 1920", width: 1080, height: 1920 },
+  { value: "1366x768", label: "1366 x 768", width: 1366, height: 768 },
   { value: "custom", label: "Custom", width: 0, height: 0 },
 ] as const;
-
-function wait(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-function statusVariant(status: WinnerStatus) {
-  if (status === "confirmed") {
-    return "success" as const;
-  }
-
-  if (status === "draft") {
-    return "warning" as const;
-  }
-
-  if (status === "revealed") {
-    return "accent" as const;
-  }
-
-  return "neutral" as const;
-}
 
 function createFormData(values: Record<string, string | number | undefined>) {
   const formData = new FormData();
@@ -168,96 +144,46 @@ export function SimpleLuckyDrawWorkspace({
   eventId,
   eventSlug,
   eventName,
-  prizes,
-  sessions,
+  prize,
+  session,
   initialDesignWidth,
   initialDesignHeight,
-  createSessionAction,
-  rollAction,
+  addWinnerAction,
+  editWinnerAction,
   updateBoardSettingsAction,
-  revealNextAction,
   resetDrawAction,
-  validateAction,
   deleteAction,
-  invalidateAction,
-  redrawAction,
-  cancelPendingAction,
 }: SimpleLuckyDrawWorkspaceProps) {
   const router = useRouter();
-  const [selectedPrizeId, setSelectedPrizeId] = useState(prizes[0]?.id ?? "");
-  const selectedPrizeSessions = useMemo(
-    () => sessions.filter((session) => session.prizeCategoryId === selectedPrizeId),
-    [selectedPrizeId, sessions],
-  );
-  const [selectedSessionId, setSelectedSessionId] = useState(selectedPrizeSessions[0]?.id ?? sessions[0]?.id ?? "");
-  const selectedSession = useMemo(
-    () => sessions.find((session) => session.id === selectedSessionId),
-    [selectedSessionId, sessions],
-  );
-  const selectedPrize = useMemo(() => prizes.find((prize) => prize.id === selectedPrizeId), [prizes, selectedPrizeId]);
   const [screenPreset, setScreenPreset] = useState(() => {
-    if (initialDesignWidth === 1080 && initialDesignHeight === 1920) {
-      return "1080x1920";
-    }
-
-    if (initialDesignWidth === 1920 && initialDesignHeight === 1080) {
-      return "1920x1080";
-    }
-
+    if (initialDesignWidth === 1080 && initialDesignHeight === 1920) return "1080x1920";
+    if (initialDesignWidth === 1366 && initialDesignHeight === 768) return "1366x768";
+    if (initialDesignWidth === 1920 && initialDesignHeight === 1080) return "1920x1080";
     return "custom";
   });
   const [designWidth, setDesignWidth] = useState(initialDesignWidth);
   const [designHeight, setDesignHeight] = useState(initialDesignHeight);
-  const [displayAmount, setDisplayAmount] = useState(selectedSession?.gridItemCount ?? 12);
-  const initialBoardShape = calculateBoardShape(selectedSession?.gridItemCount ?? 12, initialDesignWidth, initialDesignHeight);
-  const [gridColumns, setGridColumns] = useState(selectedSession?.gridCols ?? initialBoardShape.columns);
-  const [gridRows, setGridRows] = useState(selectedSession?.gridRows ?? initialBoardShape.rows);
-  const [drawAmount, setDrawAmount] = useState(5);
-  const [revealIntervalMs, setRevealIntervalMs] = useState(900);
-  const [animationPreset, setAnimationPreset] = useState<LuckyDrawAnimationPreset>(selectedPrize?.animationPreset ?? "fade_pop");
-  const [animationSpeed, setAnimationSpeed] = useState(selectedPrize?.animationSpeed ?? 1);
-  const [boardSettings, setBoardSettings] = useState<PrizeBoardSettings>(selectedPrize?.boardSettings ?? prizes[0]?.boardSettings ?? defaultPrizeBoardSettings);
-  const [sessionName, setSessionName] = useState("");
+  const [displayAmount, setDisplayAmount] = useState(session.gridItemCount ?? 12);
+  const initialBoardShape = calculateBoardShape(session.gridItemCount ?? 12, initialDesignWidth, initialDesignHeight);
+  const [gridColumns, setGridColumns] = useState(session.gridCols ?? initialBoardShape.columns);
+  const [gridRows, setGridRows] = useState(session.gridRows ?? initialBoardShape.rows);
+  const [animationPreset, setAnimationPreset] = useState<LuckyDrawAnimationPreset>(prize.animationPreset ?? "fade_pop");
+  const [animationSpeed, setAnimationSpeed] = useState(prize.animationSpeed ?? 1);
+  const [boardSettings, setBoardSettings] = useState<PrizeBoardSettings>(prize.boardSettings ?? defaultPrizeBoardSettings);
+  const [numberPrefix, setNumberPrefix] = useState(boardSettings.numberPrefix ?? "");
+  const [rangeStart, setRangeStart] = useState(boardSettings.numberRangeStart ?? 1);
+  const [rangeEnd, setRangeEnd] = useState(boardSettings.numberRangeEnd ?? 999);
+  const [rangePadLength, setRangePadLength] = useState(boardSettings.numberPadLength ?? 3);
+  const [editingWinnerId, setEditingWinnerId] = useState<string | null>(null);
+  const [editingNumber, setEditingNumber] = useState("");
   const [submittingKey, setSubmittingKey] = useState<string | null>(null);
-  const [autoRunning, setAutoRunning] = useState(false);
   const [status, setStatus] = useState<{ type: "idle" | "success" | "error"; message: string }>({ type: "idle", message: "" });
-  const autoPausedRef = useRef(false);
 
-  const pendingDraftCount = selectedSession?.winners.filter((winner) => winner.status === "draft").length ?? 0;
-  const visibleWinners = selectedSession?.winners ?? [];
+  const visibleWinners = useMemo(
+    () => session.winners.filter((winner) => winner.status !== "deleted" && winner.status !== "redrawn" && winner.status !== "invalid"),
+    [session.winners],
+  );
   const cleanDisplayRoute = withBasePath(`/display/lucky-draw-clean/${eventSlug}`);
-  const selectedSessionGridItemCount = selectedSession?.gridItemCount;
-  const selectedSessionGridRows = selectedSession?.gridRows;
-  const selectedSessionGridCols = selectedSession?.gridCols;
-  const selectedSessionKey = selectedSession?.id;
-
-  useEffect(() => {
-    const nextSession = selectedPrizeSessions[0] ?? sessions.find((session) => session.prizeCategoryId === selectedPrizeId);
-    setSelectedSessionId((current) => {
-      if (selectedPrizeSessions.some((session) => session.id === current)) {
-        return current;
-      }
-
-      return nextSession?.id ?? "";
-    });
-  }, [selectedPrizeId, selectedPrizeSessions, sessions]);
-
-  useEffect(() => {
-    if (selectedSessionGridItemCount) {
-      setDisplayAmount(selectedSessionGridItemCount);
-      const nextShape = calculateBoardShape(selectedSessionGridItemCount, designWidth, designHeight);
-      setGridColumns(selectedSessionGridCols ?? nextShape.columns);
-      setGridRows(selectedSessionGridRows ?? nextShape.rows);
-    }
-  }, [selectedSessionGridCols, selectedSessionGridItemCount, selectedSessionGridRows, selectedSessionKey]);
-
-  useEffect(() => {
-    if (selectedPrize) {
-      setAnimationPreset(selectedPrize.animationPreset);
-      setAnimationSpeed(selectedPrize.animationSpeed);
-      setBoardSettings(selectedPrize.boardSettings);
-    }
-  }, [selectedPrize]);
 
   const setPreset = useCallback((value: string) => {
     setScreenPreset(value);
@@ -265,8 +191,11 @@ export function SimpleLuckyDrawWorkspace({
     if (preset && preset.value !== "custom") {
       setDesignWidth(preset.width);
       setDesignHeight(preset.height);
+      const nextShape = calculateBoardShape(displayAmount, preset.width, preset.height);
+      setGridColumns(nextShape.columns);
+      setGridRows(nextShape.rows);
     }
-  }, []);
+  }, [displayAmount]);
 
   const boardFields = useCallback(
     () => ({
@@ -288,6 +217,13 @@ export function SimpleLuckyDrawWorkspace({
       gap: boardSettings.gap,
       cleanGridGap: boardSettings.cleanGridGap,
       cleanGridPadding: boardSettings.cleanGridPadding,
+      cardPadding: boardSettings.cardPadding,
+      cleanCardWidth: boardSettings.cleanCardWidth,
+      cleanCardHeight: boardSettings.cleanCardHeight,
+      numberPrefix,
+      numberRangeStart: rangeStart,
+      numberRangeEnd: rangeEnd,
+      numberPadLength: rangePadLength,
       fontFamily: boardSettings.fontFamily,
       winnerLabelFontSize: boardSettings.winnerLabelFontSize,
       fontSize: boardSettings.fontSize,
@@ -310,7 +246,7 @@ export function SimpleLuckyDrawWorkspace({
       rollingNumberColor: boardSettings.rollingNumberColor,
       waitingTextColor: boardSettings.waitingTextColor,
     }),
-    [boardSettings],
+    [boardSettings, numberPrefix, rangeEnd, rangePadLength, rangeStart],
   );
 
   const runInlineAction = useCallback(
@@ -318,36 +254,22 @@ export function SimpleLuckyDrawWorkspace({
       key: string,
       action: (formData: FormData) => Promise<InlineActionResult>,
       formData: FormData,
-      options?: {
-        refresh?: boolean;
-      },
+      options?: { refresh?: boolean },
     ) => {
       setSubmittingKey(key);
       setStatus({ type: "idle", message: "" });
 
       try {
         const result = await action(formData);
-        setStatus({
-          type: result.ok ? "success" : "error",
-          message: result.message,
-        });
-
+        setStatus({ type: result.ok ? "success" : "error", message: result.message });
         if (result.ok && options?.refresh !== false) {
           router.refresh();
         }
-
         return result;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Something went wrong. Please try again.";
-        setStatus({
-          type: "error",
-          message,
-        });
-
-        return {
-          ok: false,
-          message,
-        };
+        setStatus({ type: "error", message });
+        return { ok: false, message };
       } finally {
         setSubmittingKey(null);
       }
@@ -355,37 +277,81 @@ export function SimpleLuckyDrawWorkspace({
     [router],
   );
 
-  async function handleRoll(event: FormEvent<HTMLFormElement>) {
+  function updateBoardSetting<K extends keyof PrizeBoardSettings>(key: K, value: PrizeBoardSettings[K]) {
+    setBoardSettings((current) => ({ ...current, [key]: value }));
+  }
+
+  function formatNumber(value: string | number) {
+    const rawValue = String(value).trim();
+    const paddedValue = /^\d+$/.test(rawValue) ? rawValue.padStart(Math.max(0, rangePadLength), "0") : rawValue;
+    return `${numberPrefix.trim()}${paddedValue}`;
+  }
+
+  async function handleDrawRandom(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedSession || !selectedPrize) {
+    const start = Math.trunc(rangeStart);
+    const end = Math.trunc(rangeEnd);
+    const total = end - start + 1;
+
+    if (!Number.isFinite(start) || !Number.isFinite(end) || total < 1) {
+      setStatus({ type: "error", message: "Drawable range must have an end value greater than or equal to the start value." });
+      return;
+    }
+
+    if (total > 1_000_000) {
+      setStatus({ type: "error", message: "Drawable range is too large. Use a range up to 1,000,000 numbers." });
+      return;
+    }
+
+    const existingNumbers = new Set(visibleWinners.map((winner) => winner.ticketNumber.toUpperCase()));
+    const availableNumbers: string[] = [];
+    for (let value = start; value <= end; value += 1) {
+      const candidate = formatNumber(value).toUpperCase();
+      if (!existingNumbers.has(candidate)) {
+        availableNumbers.push(candidate);
+      }
+    }
+
+    if (availableNumbers.length === 0) {
+      setStatus({ type: "error", message: "All numbers in this drawable range have already been drawn." });
+      return;
+    }
+
+    const ticketNumber = availableNumbers[Math.floor(Math.random() * availableNumbers.length)];
+    const saveSettingsResult = await updateBoardSettingsAction(
+      createFormData({
+        eventId,
+        prizeCategoryId: prize.id,
+        drawSessionId: session.id,
+        animationPreset,
+        animationSpeed,
+        ...boardFields(),
+        ...boardSettingsFields(),
+      }),
+    );
+
+    if (!saveSettingsResult.ok) {
+      setStatus({ type: "error", message: saveSettingsResult.message });
       return;
     }
 
     await runInlineAction(
-      "roll",
-      rollAction,
+      "draw-random",
+      addWinnerAction,
       createFormData({
-        eventId,
-        prizeCategoryId: selectedPrize.id,
-        drawSessionId: selectedSession.id,
-        drawAmount,
-        ...boardFields(),
-        displayAmount: Math.max(displayAmount, drawAmount),
+        drawSessionId: session.id,
+        ticketNumber,
       }),
     );
   }
 
   async function handleUpdateBoard(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedSession || !selectedPrize) {
-      return;
-    }
-
     const formData = mergeFormData(
       createFormData({
         eventId,
-        prizeCategoryId: selectedPrize.id,
-        drawSessionId: selectedSession.id,
+        prizeCategoryId: prize.id,
+        drawSessionId: session.id,
         animationPreset,
         animationSpeed,
         ...boardFields(),
@@ -394,118 +360,42 @@ export function SimpleLuckyDrawWorkspace({
       new FormData(event.currentTarget),
     );
 
-    await runInlineAction(
-      "update-board",
-      updateBoardSettingsAction,
-      formData,
-      { refresh: false },
-    );
-  }
-
-  function updateBoardSetting<K extends keyof PrizeBoardSettings>(key: K, value: PrizeBoardSettings[K]) {
-    setBoardSettings((current) => ({
-      ...current,
-      [key]: value,
-    }));
-  }
-
-  async function handleRevealNext() {
-    if (!selectedSession) {
-      return;
-    }
-
-    await runInlineAction(
-      "reveal-next",
-      revealNextAction,
-      createFormData({
-        drawSessionId: selectedSession.id,
-      }),
-    );
-  }
-
-  async function handleAutoReveal() {
-    if (!selectedSession || pendingDraftCount === 0 || autoRunning) {
-      return;
-    }
-
-    autoPausedRef.current = false;
-    setAutoRunning(true);
-    setSubmittingKey("auto-reveal");
-
-    for (let index = 0; index < pendingDraftCount; index += 1) {
-      if (autoPausedRef.current) {
-        break;
-      }
-
-      const result = await revealNextAction(
-        createFormData({
-          drawSessionId: selectedSession.id,
-        }),
-      );
-      setStatus({
-        type: result.ok ? "success" : "error",
-        message: result.message,
-      });
-
-      if (!result.ok) {
-        break;
-      }
-
-      await wait(revealIntervalMs);
-    }
-
-    setAutoRunning(false);
-    setSubmittingKey(null);
-    router.refresh();
-  }
-
-  async function handleCancelPending() {
-    if (!selectedSession) {
-      return;
-    }
-
-    await runInlineAction(
-      "cancel-pending",
-      cancelPendingAction,
-      createFormData({
-        drawSessionId: selectedSession.id,
-      }),
-    );
+    await runInlineAction("update-board", updateBoardSettingsAction, formData, { refresh: false });
   }
 
   async function handleResetDraw() {
-    if (!selectedSession) {
-      return;
-    }
-
-    const confirmed = window.confirm("Clear all numbers from this draw session and reset the display board?");
-    if (!confirmed) {
-      return;
-    }
+    const confirmed = window.confirm("Clear every winning number and reset the display screen?");
+    if (!confirmed) return;
 
     await runInlineAction(
       "reset-draw",
       resetDrawAction,
       createFormData({
-        drawSessionId: selectedSession.id,
+        drawSessionId: session.id,
         ...boardFields(),
       }),
     );
   }
 
-  async function handleWinnerAction(
-    key: string,
-    action: (formData: FormData) => Promise<InlineActionResult>,
-    winnerId: string,
-  ) {
-    await runInlineAction(
-      key,
-      action,
+  async function handleDeleteWinner(winnerId: string) {
+    const confirmed = window.confirm("Delete this winning number from the simple draw list?");
+    if (!confirmed) return;
+    await runInlineAction("delete-winner", deleteAction, createFormData({ winnerId, ...boardFields() }));
+  }
+
+  async function handleEditWinner(winnerId: string) {
+    const result = await runInlineAction(
+      `edit-${winnerId}`,
+      editWinnerAction,
       createFormData({
         winnerId,
-        ...boardFields(),
+        ticketNumber: editingNumber,
       }),
     );
+    if (result.ok) {
+      setEditingWinnerId(null);
+      setEditingNumber("");
+    }
   }
 
   async function copyDisplayRoute() {
@@ -536,7 +426,7 @@ export function SimpleLuckyDrawWorkspace({
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <SurfaceTitle>Simple Lucky Draw</SurfaceTitle>
-            <SurfaceCopy>{eventName} | digital random batch draw with clean main-screen cards.</SurfaceCopy>
+            <SurfaceCopy>{eventName} | fast moving draw, separated from Pools, Prizes, Sessions, and Status setup.</SurfaceCopy>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="secondary" onClick={copyDisplayRoute}>
@@ -551,43 +441,17 @@ export function SimpleLuckyDrawWorkspace({
             </Button>
           </div>
         </div>
-
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div className="space-y-2">
-            <Label>Prize</Label>
-            <Select value={selectedPrizeId} onChange={(event) => setSelectedPrizeId(event.target.value)}>
-              {prizes.map((prize) => (
-                <option key={prize.id} value={prize.id}>
-                  {prize.name} ({prize.quantity})
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Session</Label>
-            <Select value={selectedSessionId} onChange={(event) => setSelectedSessionId(event.target.value)}>
-              {selectedPrizeSessions.map((session) => (
-                <option key={session.id} value={session.id}>
-                  {session.name} ({session.actualWinnerCount}/{session.plannedWinnerCount})
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Status</Label>
-            <div className="flex h-11 items-center justify-between rounded-3xl border border-white/10 bg-white/[0.04] px-4 text-sm text-slate-200">
-              <span>{selectedSession?.status ?? "No session"}</span>
-              <Badge variant={pendingDraftCount > 0 ? "warning" : "success"}>{pendingDraftCount} rolling</Badge>
-            </div>
-          </div>
-        </div>
       </Surface>
 
-      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
         <div className="min-w-0 space-y-6">
           <Surface className="min-w-0 space-y-5 p-6">
-            <SurfaceTitle>Screen And Draw</SurfaceTitle>
-            <form className="space-y-5" onSubmit={handleRoll}>
+            <div>
+              <SurfaceTitle>Screen, Margins & Colours</SurfaceTitle>
+              <SurfaceCopy>Fast display controls only. Apply changes immediately to the clean display page.</SurfaceCopy>
+            </div>
+
+            <form className="space-y-5" onSubmit={handleUpdateBoard}>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Screen size</Label>
@@ -600,15 +464,8 @@ export function SimpleLuckyDrawWorkspace({
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Reveal interval</Label>
-                  <Input
-                    type="number"
-                    min={250}
-                    max={5000}
-                    step={50}
-                    value={revealIntervalMs}
-                    onChange={(event) => setRevealIntervalMs(Number(event.target.value))}
-                  />
+                  <Label>Numbers on screen</Label>
+                  <Input type="number" min={1} max={200} value={displayAmount} onChange={(event) => setDisplayAmount(Number(event.target.value))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Design width</Label>
@@ -637,78 +494,52 @@ export function SimpleLuckyDrawWorkspace({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Display amount</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={120}
-                    value={displayAmount}
-                    onChange={(event) => setDisplayAmount(Number(event.target.value))}
-                  />
+                  <Label>Columns</Label>
+                  <Input type="number" min={1} max={200} value={gridColumns} onChange={(event) => setGridColumns(Number(event.target.value))} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Cards per row</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={120}
-                    value={gridColumns}
-                    onChange={(event) => setGridColumns(Number(event.target.value))}
-                  />
+                  <Label>Rows</Label>
+                  <Input type="number" min={1} max={200} value={gridRows} onChange={(event) => setGridRows(Number(event.target.value))} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Cards per column</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={120}
-                    value={gridRows}
-                    onChange={(event) => setGridRows(Number(event.target.value))}
-                  />
+                  <Label>Grid margin / padding</Label>
+                  <Input type="number" min={0} max={160} value={boardSettings.cleanGridPadding} onChange={(event) => updateBoardSetting("cleanGridPadding", Number(event.target.value))} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Draw amount</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={drawAmount}
-                    onChange={(event) => setDrawAmount(Number(event.target.value))}
-                  />
-                </div>
-              </div>
-              <Button type="submit" size="lg" className="w-full" disabled={!selectedSession || submittingKey === "roll"}>
-                <Play className="size-5" />
-                {submittingKey === "roll" ? "Rolling..." : "Roll"}
-              </Button>
-            </form>
-
-            <form className="space-y-5 border-t border-white/10 pt-5" onSubmit={handleUpdateBoard}>
-              <div>
-                <SurfaceTitle className="text-lg">Live Display Settings</SurfaceTitle>
-                <SurfaceCopy>Apply changes to the clean display page without refreshing the display browser.</SurfaceCopy>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Grid amount</Label>
-                  <Input type="number" min={1} max={120} value={displayAmount} onChange={(event) => setDisplayAmount(Number(event.target.value))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Cards per row</Label>
-                  <Input type="number" min={1} max={120} value={gridColumns} onChange={(event) => setGridColumns(Number(event.target.value))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Cards per column</Label>
-                  <Input type="number" min={1} max={120} value={gridRows} onChange={(event) => setGridRows(Number(event.target.value))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Grid gap</Label>
+                  <Label>Gap between numbers</Label>
                   <Input type="number" min={0} max={96} value={boardSettings.cleanGridGap} onChange={(event) => updateBoardSetting("cleanGridGap", Number(event.target.value))} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Grid padding</Label>
-                  <Input type="number" min={0} max={160} value={boardSettings.cleanGridPadding} onChange={(event) => updateBoardSetting("cleanGridPadding", Number(event.target.value))} />
+                  <Label>Card padding</Label>
+                  <Input type="number" min={0} max={120} value={boardSettings.cardPadding} onChange={(event) => updateBoardSetting("cardPadding", Number(event.target.value))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Card width (0=auto)</Label>
+                  <Input type="number" min={0} max={1200} value={boardSettings.cleanCardWidth} onChange={(event) => updateBoardSetting("cleanCardWidth", Number(event.target.value))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Card height (0=auto)</Label>
+                  <Input type="number" min={0} max={900} value={boardSettings.cleanCardHeight} onChange={(event) => updateBoardSetting("cleanCardHeight", Number(event.target.value))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Font family</Label>
+                  <Input value={boardSettings.fontFamily} placeholder="inherit, Inter, Arial" onChange={(event) => updateBoardSetting("fontFamily", event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Number font size</Label>
+                  <Input type="number" min={16} max={200} value={boardSettings.numberFontSize} onChange={(event) => updateBoardSetting("numberFontSize", Number(event.target.value))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Waiting font size</Label>
+                  <Input type="number" min={16} max={160} value={boardSettings.fontSize} onChange={(event) => updateBoardSetting("fontSize", Number(event.target.value))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Font weight</Label>
+                  <Input type="number" min={400} max={900} step={100} value={boardSettings.fontWeight} onChange={(event) => updateBoardSetting("fontWeight", Number(event.target.value))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Small label size</Label>
+                  <Input type="number" min={8} max={72} value={boardSettings.winnerLabelFontSize} onChange={(event) => updateBoardSetting("winnerLabelFontSize", Number(event.target.value))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Animation</Label>
@@ -724,7 +555,7 @@ export function SimpleLuckyDrawWorkspace({
                 </div>
                 <div className="space-y-2">
                   <Label>Animation speed</Label>
-                  <Input type="number" min={0.25} max={3} step={0.1} value={animationSpeed} onChange={(event) => setAnimationSpeed(Number(event.target.value))} />
+                  <Input type="number" min={0.25} max={3} step={0.05} value={animationSpeed} onChange={(event) => setAnimationSpeed(Number(event.target.value))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Page background</Label>
@@ -746,43 +577,17 @@ export function SimpleLuckyDrawWorkspace({
 
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <ColorSettingField label="Empty card" name="emptyCardBackgroundColor" value={boardSettings.emptyCardBackgroundColor} onCommit={(value) => updateBoardSetting("emptyCardBackgroundColor", value)} />
+                <ColorSettingField label="Number card" name="revealedCardBackgroundColor" value={boardSettings.revealedCardBackgroundColor} onCommit={(value) => updateBoardSetting("revealedCardBackgroundColor", value)} />
+                <ColorSettingField label="Card border" name="revealedBorderColor" value={boardSettings.revealedBorderColor} onCommit={(value) => updateBoardSetting("revealedBorderColor", value)} />
+                <ColorSettingField label="Number text" name="numberColor" value={boardSettings.numberColor} onCommit={(value) => updateBoardSetting("numberColor", value)} />
                 <ColorSettingField label="Rolling card" name="rollingCardBackgroundColor" value={boardSettings.rollingCardBackgroundColor} onCommit={(value) => updateBoardSetting("rollingCardBackgroundColor", value)} />
-                <ColorSettingField label="Revealed card" name="revealedCardBackgroundColor" value={boardSettings.revealedCardBackgroundColor} onCommit={(value) => updateBoardSetting("revealedCardBackgroundColor", value)} />
-                <ColorSettingField label="Confirmed card" name="confirmedCardBackgroundColor" value={boardSettings.confirmedCardBackgroundColor} onCommit={(value) => updateBoardSetting("confirmedCardBackgroundColor", value)} />
-                <ColorSettingField label="Default border" name="cardBorderColor" value={boardSettings.cardBorderColor} onCommit={(value) => updateBoardSetting("cardBorderColor", value)} />
                 <ColorSettingField label="Rolling border" name="rollingBorderColor" value={boardSettings.rollingBorderColor} onCommit={(value) => updateBoardSetting("rollingBorderColor", value)} />
-                <ColorSettingField label="Revealed border" name="revealedBorderColor" value={boardSettings.revealedBorderColor} onCommit={(value) => updateBoardSetting("revealedBorderColor", value)} />
-                <ColorSettingField label="Confirmed border" name="confirmedBorderColor" value={boardSettings.confirmedBorderColor} onCommit={(value) => updateBoardSetting("confirmedBorderColor", value)} />
-                <ColorSettingField label="Number" name="numberColor" value={boardSettings.numberColor} onCommit={(value) => updateBoardSetting("numberColor", value)} />
-                <ColorSettingField label="Confirmed number" name="confirmedNumberColor" value={boardSettings.confirmedNumberColor} onCommit={(value) => updateBoardSetting("confirmedNumberColor", value)} />
-                <ColorSettingField label="Rolling number" name="rollingNumberColor" value={boardSettings.rollingNumberColor} onCommit={(value) => updateBoardSetting("rollingNumberColor", value)} />
+                <ColorSettingField label="Rolling text" name="rollingNumberColor" value={boardSettings.rollingNumberColor} onCommit={(value) => updateBoardSetting("rollingNumberColor", value)} />
                 <ColorSettingField label="Waiting text" name="waitingTextColor" value={boardSettings.waitingTextColor} onCommit={(value) => updateBoardSetting("waitingTextColor", value)} />
               </div>
 
-              <Button type="submit" variant="secondary" className="w-full" disabled={!selectedSession || submittingKey === "update-board"}>
-                {submittingKey === "update-board" ? "Applying..." : "Apply Live Display Settings"}
-              </Button>
-            </form>
-          </Surface>
-
-          <Surface className="min-w-0 space-y-5 p-6">
-            <SurfaceTitle>Create Session</SurfaceTitle>
-            <form action={createSessionAction} className="space-y-4">
-              <input type="hidden" name="eventId" value={eventId} />
-              <input type="hidden" name="prizeCategoryId" value={selectedPrizeId} />
-              <input type="hidden" name="displayAmount" value={displayAmount} />
-              <input type="hidden" name="gridRows" value={gridRows} />
-              <input type="hidden" name="gridCols" value={gridColumns} />
-              <div className="space-y-2">
-                <Label>Session name</Label>
-                <Input name="name" value={sessionName} onChange={(event) => setSessionName(event.target.value)} placeholder="Session A" required />
-              </div>
-              <div className="space-y-2">
-                <Label>Planned winners</Label>
-                <Input name="plannedWinnerCount" type="number" min={1} defaultValue={drawAmount} />
-              </div>
-              <Button type="submit" variant="secondary" className="w-full" disabled={!selectedPrizeId}>
-                Add Session
+              <Button type="submit" variant="secondary" className="w-full" disabled={submittingKey === "update-board"}>
+                {submittingKey === "update-board" ? "Applying..." : "Apply Display Controls"}
               </Button>
             </form>
           </Surface>
@@ -792,39 +597,45 @@ export function SimpleLuckyDrawWorkspace({
           <Surface className="min-w-0 space-y-5 p-6">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <SurfaceTitle>Reveal Control</SurfaceTitle>
-                <SurfaceCopy>Cards roll together. Reveal one at a time or let the page reveal the pending cards automatically.</SurfaceCopy>
+                <SurfaceTitle>Random Draw</SurfaceTitle>
+                <SurfaceCopy>Set the drawable number range, then pull one random winning number. Existing winners are excluded automatically.</SurfaceCopy>
               </div>
-              <Badge variant={pendingDraftCount > 0 ? "warning" : "success"}>{pendingDraftCount} pending</Badge>
+              <Badge variant="accent">{visibleWinners.length} drawn</Badge>
             </div>
-            <div className="grid min-w-0 gap-3 sm:grid-cols-2 2xl:grid-cols-5">
-              <Button type="button" variant="secondary" disabled={pendingDraftCount === 0 || submittingKey === "reveal-next"} onClick={handleRevealNext}>
-                <StepForward className="size-4" />
-                Reveal Next
+
+            <form className="space-y-4" onSubmit={handleDrawRandom}>
+              <div className="grid gap-4 rounded-[1.5rem] border border-white/10 bg-white/[0.02] p-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Number format prefix</Label>
+                  <Input value={numberPrefix} onChange={(event) => setNumberPrefix(event.target.value)} placeholder="Example: A-, VIP, SB" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Zero padding</Label>
+                  <Input type="number" min={0} max={12} value={rangePadLength} onChange={(event) => setRangePadLength(Number(event.target.value))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Drawable range start</Label>
+                  <Input type="number" min={0} value={rangeStart} onChange={(event) => setRangeStart(Number(event.target.value))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Drawable range end</Label>
+                  <Input type="number" min={0} value={rangeEnd} onChange={(event) => setRangeEnd(Number(event.target.value))} />
+                </div>
+                <p className="md:col-span-2 text-xs text-slate-500">
+                  Range preview: {formatNumber(rangeStart)} to {formatNumber(rangeEnd)}. These are drawable candidates, not pre-added winners.
+                </p>
+              </div>
+
+              <Button type="submit" size="lg" className="w-full" disabled={submittingKey === "draw-random"}>
+                <Plus className="size-5" />
+                {submittingKey === "draw-random" ? "Drawing..." : "Draw Random Winning Number"}
               </Button>
-              <Button type="button" variant="secondary" disabled={pendingDraftCount === 0 || autoRunning} onClick={() => void handleAutoReveal()}>
-                <Play className="size-4" />
-                Auto Reveal All
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={!autoRunning}
-                onClick={() => {
-                  autoPausedRef.current = true;
-                  setAutoRunning(false);
-                }}
-              >
-                <Pause className="size-4" />
-                Pause
-              </Button>
-              <Button type="button" variant="danger" disabled={pendingDraftCount === 0 || submittingKey === "cancel-pending"} onClick={handleCancelPending}>
-                <X className="size-4" />
-                Cancel Pending
-              </Button>
-              <Button type="button" variant="danger" disabled={!selectedSession || visibleWinners.length === 0 || submittingKey === "reset-draw"} onClick={() => void handleResetDraw()}>
+            </form>
+
+            <div className="flex flex-wrap gap-2 border-t border-white/10 pt-5">
+              <Button type="button" variant="danger" disabled={visibleWinners.length === 0 || submittingKey === "reset-draw"} onClick={() => void handleResetDraw()}>
                 <RotateCcw className="size-4" />
-                {submittingKey === "reset-draw" ? "Resetting..." : "Reset Draw"}
+                {submittingKey === "reset-draw" ? "Resetting..." : "Reset Draw Screen"}
               </Button>
             </div>
           </Surface>
@@ -832,73 +643,59 @@ export function SimpleLuckyDrawWorkspace({
           <Surface className="min-w-0 space-y-4 p-6">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <SurfaceTitle>Winner Operations</SurfaceTitle>
-                <SurfaceCopy>Validate, redraw, or soft-delete revealed and queued winners.</SurfaceCopy>
+                <SurfaceTitle>Winning Numbers</SurfaceTitle>
+                <SurfaceCopy>Newest numbers appear first. Edits sync back to the display.</SurfaceCopy>
               </div>
-              <Badge variant="accent">{visibleWinners.length} records</Badge>
             </div>
 
             {visibleWinners.length === 0 ? (
               <div className="rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.02] p-5 text-sm text-slate-500">
-                No winners in this session yet.
+                No winning numbers yet.
               </div>
             ) : (
               <div className="space-y-3">
-                {visibleWinners.map((winner) => (
-                  <div key={winner.id} className="min-w-0 rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-4">
-                    <div className="grid min-w-0 gap-3 2xl:grid-cols-[minmax(0,1fr)_minmax(0,32rem)] 2xl:items-center">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant={statusVariant(winner.status)}>{winner.status}</Badge>
-                          <span className="text-xs uppercase tracking-[0.22em] text-slate-500">#{winner.revealOrder}</span>
+                {visibleWinners.map((winner) => {
+                  const isEditing = editingWinnerId === winner.id;
+                  return (
+                    <div key={winner.id} className="min-w-0 rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-4">
+                      <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs uppercase tracking-[0.22em] text-slate-500">#{winner.revealOrder}</span>
+                          </div>
+                          {isEditing ? (
+                            <Input className="mt-2" value={editingNumber} onChange={(event) => setEditingNumber(event.target.value)} autoFocus />
+                          ) : (
+                            <p className="mt-2 break-words text-2xl font-semibold tracking-[0.12em] text-slate-50">{winner.ticketNumber}</p>
+                          )}
                         </div>
-                        <p className="mt-2 break-words text-2xl font-semibold tracking-[0.12em] text-slate-50">{winner.ticketNumber}</p>
-                      </div>
-                      <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          disabled={winner.status !== "revealed"}
-                          onClick={() => void handleWinnerAction(`validate-${winner.id}`, validateAction, winner.id)}
-                        >
-                          <Check className="size-4" />
-                          Validate
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="danger"
-                          size="sm"
-                          disabled={winner.status === "deleted" || winner.status === "redrawn" || winner.status === "invalid"}
-                          onClick={() => void handleWinnerAction(`invalidate-${winner.id}`, invalidateAction, winner.id)}
-                        >
-                          <X className="size-4" />
-                          Invalidate
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          disabled={winner.status === "deleted" || winner.status === "redrawn"}
-                          onClick={() => void handleWinnerAction(`redraw-${winner.id}`, redrawAction, winner.id)}
-                        >
-                          <RefreshCw className="size-4" />
-                          Redraw
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="danger"
-                          size="sm"
-                          disabled={winner.status === "deleted"}
-                          onClick={() => void handleWinnerAction(`delete-${winner.id}`, deleteAction, winner.id)}
-                        >
-                          <Trash2 className="size-4" />
-                          Delete
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                          {isEditing ? (
+                            <>
+                              <Button type="button" variant="secondary" size="sm" disabled={!editingNumber.trim() || submittingKey === `edit-${winner.id}`} onClick={() => void handleEditWinner(winner.id)}>
+                                <Save className="size-4" />
+                                Save
+                              </Button>
+                              <Button type="button" variant="ghost" size="sm" onClick={() => { setEditingWinnerId(null); setEditingNumber(""); }}>
+                                <X className="size-4" />
+                                Cancel
+                              </Button>
+                            </>
+                          ) : (
+                            <Button type="button" variant="secondary" size="sm" onClick={() => { setEditingWinnerId(winner.id); setEditingNumber(winner.ticketNumber); }}>
+                              <Pencil className="size-4" />
+                              Edit
+                            </Button>
+                          )}
+                          <Button type="button" variant="danger" size="sm" disabled={submittingKey === "delete-winner"} onClick={() => void handleDeleteWinner(winner.id)}>
+                            <Trash2 className="size-4" />
+                            Delete
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </Surface>

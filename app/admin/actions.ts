@@ -52,6 +52,23 @@ function getErrorMessage(error: unknown) {
   return "Something went wrong. Please try again.";
 }
 
+function stripConfiguredBasePath(pathname: string) {
+  const basePath = process.env.NEXT_BASE_PATH || process.env.NEXT_PUBLIC_BASE_PATH || "";
+  if (!basePath || basePath === "/") {
+    return pathname;
+  }
+
+  if (pathname === basePath) {
+    return "/";
+  }
+
+  if (pathname.startsWith(`${basePath}/`)) {
+    return pathname.slice(basePath.length) || "/";
+  }
+
+  return pathname;
+}
+
 async function redirectBackWithStatus(kind: "notice" | "error", message: string, fallbackPath = "/admin") {
   const headerList = await headers();
   const referer = headerList.get("referer");
@@ -61,7 +78,7 @@ async function redirectBackWithStatus(kind: "notice" | "error", message: string,
   url.searchParams.delete("error");
   url.searchParams.set(kind, message);
 
-  redirect(`${url.pathname}${url.search}`);
+  redirect(`${stripConfiguredBasePath(url.pathname)}${url.search}`);
 }
 
 async function requireOperator() {
@@ -183,6 +200,11 @@ function parsePrizeBoardSettingsFromForm(formData: FormData) {
     gap: getNumber(formData, "gap", defaultPrizeBoardSettings.gap),
     cleanGridGap: getNumber(formData, "cleanGridGap", defaultPrizeBoardSettings.cleanGridGap),
     cleanGridPadding: getNumber(formData, "cleanGridPadding", defaultPrizeBoardSettings.cleanGridPadding),
+    cardPadding: getNumber(formData, "cardPadding", defaultPrizeBoardSettings.cardPadding),
+    numberPrefix: getString(formData, "numberPrefix") || defaultPrizeBoardSettings.numberPrefix,
+    numberRangeStart: getNumber(formData, "numberRangeStart", defaultPrizeBoardSettings.numberRangeStart),
+    numberRangeEnd: getNumber(formData, "numberRangeEnd", defaultPrizeBoardSettings.numberRangeEnd),
+    numberPadLength: getNumber(formData, "numberPadLength", defaultPrizeBoardSettings.numberPadLength),
     fontFamily: getString(formData, "fontFamily") || defaultPrizeBoardSettings.fontFamily,
     winnerLabelFontSize: getNumber(formData, "winnerLabelFontSize", defaultPrizeBoardSettings.winnerLabelFontSize),
     fontSize: getNumber(formData, "fontSize", defaultPrizeBoardSettings.fontSize),
@@ -607,6 +629,58 @@ export async function simpleRevealNextWinnerAction(formData: FormData) {
     );
 
     return "Next winner revealed.";
+  }, { fallbackPath: "/admin/simple-lucky-draw" });
+}
+
+export async function simpleAddWinningNumberAction(formData: FormData) {
+  return runInlineAdminAction(async (operator) => {
+    const drawSessionId = getString(formData, "drawSessionId");
+    const session = await prisma.drawSession.findUniqueOrThrow({
+      where: { id: drawSessionId },
+      select: {
+        id: true,
+        eventId: true,
+        prizeCategoryId: true,
+        actualWinnerCount: true,
+        plannedWinnerCount: true,
+      },
+    });
+
+    if (session.actualWinnerCount >= session.plannedWinnerCount) {
+      await prisma.drawSession.update({
+        where: { id: session.id },
+        data: { plannedWinnerCount: session.actualWinnerCount + 1 },
+      });
+    }
+
+    await revealWinner(
+      {
+        eventId: session.eventId,
+        prizeCategoryId: session.prizeCategoryId,
+        drawSessionId: session.id,
+        ticketNumber: getString(formData, "ticketNumber"),
+        note: getOptionalString(formData, "note"),
+        revealSource: "manual",
+      },
+      operator.displayName,
+    );
+
+    return "Winning number added to the display.";
+  }, { fallbackPath: "/admin/simple-lucky-draw" });
+}
+
+export async function simpleEditWinningNumberAction(formData: FormData) {
+  return runInlineAdminAction(async (operator) => {
+    await editWinnerTicket(
+      {
+        winnerId: getString(formData, "winnerId"),
+        ticketNumber: getString(formData, "ticketNumber"),
+        note: getOptionalString(formData, "note"),
+      },
+      operator.displayName,
+    );
+
+    return "Winning number updated and synced.";
   }, { fallbackPath: "/admin/simple-lucky-draw" });
 }
 

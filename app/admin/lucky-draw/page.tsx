@@ -19,6 +19,7 @@ import {
   updatePrizeBoardSettingsAction,
 } from "@/app/admin/actions";
 import { defaultPrizeBoardSettings, prizeBoardSettingsSchema } from "@/modules/shared/types/contracts";
+import { withBasePath } from "@/lib/public-path";
 import { getWorkspaceSnapshot } from "@/modules/shared/services/workspace-query-service";
 
 function resolvePrizeBoardSettings(boardSettings: unknown) {
@@ -203,7 +204,7 @@ export default async function LuckyDrawAdminPage({ searchParams }: { searchParam
 
                 {prize.displayImageUrl ? (
                   <div className="overflow-hidden rounded-[1.4rem] border border-white/10 bg-white/[0.03]">
-                    <img src={prize.displayImageUrl} alt={prize.name} className="h-48 w-full object-cover" />
+                    <img src={withBasePath(prize.displayImageUrl)} alt={prize.name} className="h-48 w-full object-cover" />
                   </div>
                 ) : null}
 

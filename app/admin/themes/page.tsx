@@ -166,7 +166,7 @@ function ThemePreview({
 }) {
   const backgroundLayer =
     backgroundType === "image" && backgroundImageUrl
-      ? `linear-gradient(180deg, rgba(2,6,23,0.18), rgba(2,6,23,0.68)), url(${backgroundImageUrl}) center/${defaults.backgroundFit} no-repeat`
+      ? `linear-gradient(180deg, rgba(2,6,23,0.18), rgba(2,6,23,0.68)), url(${withBasePath(backgroundImageUrl)}) center/${defaults.backgroundFit} no-repeat`
       : `linear-gradient(135deg, ${defaults.backgroundColorStart} 0%, ${defaults.backgroundColorEnd} 100%)`;
 
   return (
@@ -506,7 +506,7 @@ export default async function ThemesPage({ searchParams }: { searchParams: Promi
             return (
               <div key={asset.id} className="rounded-[1.4rem] border border-white/10 bg-white/[0.03] p-4">
                 <div className="aspect-[4/3] overflow-hidden rounded-[1rem] border border-white/10 bg-slate-950/60">
-                  <img src={asset.publicUrl} alt={metadata.altText ?? metadata.title ?? "Media asset"} className="h-full w-full object-cover" />
+                  <img src={withBasePath(asset.publicUrl)} alt={metadata.altText ?? metadata.title ?? "Media asset"} className="h-full w-full object-cover" />
                 </div>
                 <div className="mt-4 flex items-center justify-between gap-3">
                   <div>

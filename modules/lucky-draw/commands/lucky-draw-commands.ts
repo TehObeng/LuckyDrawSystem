@@ -9,6 +9,14 @@ import { validateTicketNumber } from "@/modules/shared/utils/ticket-format";
 
 const ACTIVE_WINNER_STATUSES: WinnerStatus[] = ["revealed", "confirmed"];
 const RESERVED_WINNER_STATUSES: WinnerStatus[] = ["draft", "revealed", "confirmed"];
+
+function isSimpleDrawPrizeCategoryId(prizeCategoryId: string) {
+  return prizeCategoryId.startsWith("simple-draw-prize-");
+}
+
+function normalizeSimpleDrawNumber(rawValue: string) {
+  return rawValue.trim().toUpperCase().replace(/\s+/g, "").replace(/[^A-Z0-9-]/g, "");
+}
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
 function clampBoardNumber(value: number, min: number, max: number) {
@@ -555,8 +563,11 @@ async function revealWinnerTx(
     ticketNumber: input.ticketNumber!,
   });
 
+  const simpleDrawNumber = isSimpleDrawPrizeCategoryId(input.prizeCategoryId) ? normalizeSimpleDrawNumber(input.ticketNumber!) : null;
   const ticketFormat = ticketFormatSchema.parse(event.ticketFormat);
-  const validatedTicket = validateTicketNumber(input.ticketNumber!, ticketFormat);
+  const validatedTicket = simpleDrawNumber
+    ? { normalized: simpleDrawNumber, valid: Boolean(simpleDrawNumber), issues: ["Ticket number is required."] }
+    : validateTicketNumber(input.ticketNumber!, ticketFormat);
   if (!validatedTicket.valid) {
     throw new Error(validatedTicket.issues[0] ?? "Invalid ticket number.");
   }
@@ -1842,8 +1853,11 @@ export async function editWinnerTicket(input: z.input<typeof winnerMutationSchem
     const event = await tx.event.findUniqueOrThrow({
       where: { id: winner.eventId },
     });
+    const simpleDrawNumber = isSimpleDrawPrizeCategoryId(winner.prizeCategoryId) ? normalizeSimpleDrawNumber(payload.ticketNumber) : null;
     const ticketFormat = ticketFormatSchema.parse(event.ticketFormat);
-    const validatedTicket = validateTicketNumber(payload.ticketNumber, ticketFormat);
+    const validatedTicket = simpleDrawNumber
+      ? { normalized: simpleDrawNumber, valid: Boolean(simpleDrawNumber), issues: ["Ticket number is required."] }
+      : validateTicketNumber(payload.ticketNumber, ticketFormat);
     if (!validatedTicket.valid) {
       throw new Error(validatedTicket.issues[0] ?? "Invalid ticket number.");
     }

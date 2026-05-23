@@ -1,19 +1,12 @@
-import Link from "next/link";
 import { PageHeader } from "@/components/admin/page-header";
 import { SimpleLuckyDrawWorkspace } from "@/components/admin/simple-lucky-draw-workspace";
-import { Button } from "@/components/ui/button";
 import { Surface, SurfaceCopy, SurfaceTitle } from "@/components/ui/surface";
 import {
-  simpleCancelPendingRollAction,
-  simpleCreateDrawSessionAction,
+  simpleAddWinningNumberAction,
   simpleDeleteWinnerAction,
-  simpleInvalidateWinnerAction,
-  simpleRedrawWinnerRandomAction,
-  simpleRevealNextWinnerAction,
+  simpleEditWinningNumberAction,
   simpleResetDrawAction,
-  simpleRollRandomWinnerBatchAction,
   simpleUpdateBoardSettingsAction,
-  simpleValidateWinnerAction,
 } from "@/app/admin/actions";
 import { prisma } from "@/lib/prisma";
 import { defaultPrizeBoardSettings, prizeBoardSettingsSchema } from "@/modules/shared/types/contracts";
@@ -22,6 +15,63 @@ import { getWorkspaceSnapshot } from "@/modules/shared/services/workspace-query-
 function resolvePrizeBoardSettings(value: unknown) {
   const parsed = prizeBoardSettingsSchema.safeParse(value);
   return parsed.success ? parsed.data : defaultPrizeBoardSettings;
+}
+
+async function ensureSimpleLuckyDrawWorkspace(eventId: string) {
+  const prize = await prisma.prizeCategory.upsert({
+    where: {
+      id: `simple-draw-prize-${eventId}`,
+    },
+    update: {},
+    create: {
+      id: `simple-draw-prize-${eventId}`,
+      eventId,
+      name: "Winning Numbers",
+      quantity: 9999,
+      displayMode: "grid",
+      animationPreset: "fade_pop",
+      animationSpeed: 1,
+      boardSettings: defaultPrizeBoardSettings,
+      sortOrder: -999,
+    },
+  });
+
+  const existingSession = await prisma.drawSession.findFirst({
+    where: {
+      eventId,
+      prizeCategoryId: prize.id,
+      name: "Fast Draw",
+    },
+    orderBy: {
+      sessionOrder: "asc",
+    },
+  });
+
+  if (existingSession) {
+    return { prize, session: existingSession };
+  }
+
+  const currentMaxOrder = await prisma.drawSession.aggregate({
+    where: { eventId },
+    _max: { sessionOrder: true },
+  });
+  const session = await prisma.drawSession.create({
+    data: {
+      eventId,
+      prizeCategoryId: prize.id,
+      name: "Fast Draw",
+      sessionOrder: (currentMaxOrder._max.sessionOrder ?? 0) + 1,
+      plannedWinnerCount: 9999,
+      layoutMode: "grid",
+      gridItemCount: 12,
+      gridRows: 3,
+      gridCols: 4,
+      revealMode: "manual",
+      status: "active",
+    },
+  });
+
+  return { prize, session };
 }
 
 export default async function SimpleLuckyDrawPage({ searchParams }: { searchParams: Promise<{ event?: string }> }) {
@@ -38,44 +88,15 @@ export default async function SimpleLuckyDrawPage({ searchParams }: { searchPara
     );
   }
 
-  if (selectedEvent.prizeCategories.length === 0) {
-    return (
-      <div className="space-y-6">
-        <PageHeader
-          eyebrow="Simple Lucky Draw"
-          title="Create a prize category first"
-          description="The simple draw console needs at least one prize category so it can attach sessions and winners to the right prize."
-        />
-        <Surface className="space-y-4">
-          <SurfaceTitle>No prize categories</SurfaceTitle>
-          <SurfaceCopy>Add a prize category on the advanced Lucky Draw page, then return here for the focused live workflow.</SurfaceCopy>
-          <Button asChild variant="secondary">
-            <Link href={`/admin/lucky-draw?event=${selectedEvent.id}`}>Open Lucky Draw Setup</Link>
-          </Button>
-        </Surface>
-      </div>
-    );
-  }
-
-  const sessions = await prisma.drawSession.findMany({
-    where: {
-      eventId: selectedEvent.id,
-    },
-    orderBy: {
-      sessionOrder: "asc",
-    },
+  const { prize: simplePrize, session: simpleSession } = await ensureSimpleLuckyDrawWorkspace(selectedEvent.id);
+  const session = await prisma.drawSession.findUniqueOrThrow({
+    where: { id: simpleSession.id },
     include: {
-      prizeCategory: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
       winners: {
         orderBy: {
           revealOrder: "desc",
         },
-        take: 80,
+        take: 200,
       },
     },
   });
@@ -86,27 +107,27 @@ export default async function SimpleLuckyDrawPage({ searchParams }: { searchPara
     <div className="space-y-6">
       <PageHeader
         eyebrow="Simple Lucky Draw"
-        title="Roll, reveal, and validate winners"
-        description="A focused live-event page for digital random batch draws and a clean main-screen card board."
+        title="Fast display controls and winning numbers"
+        description="A separated simple draw page for fast-changing draws: screen size, margins, colours, reset, and direct winning-number CRUD."
       />
 
       <SimpleLuckyDrawWorkspace
         eventId={selectedEvent.id}
         eventSlug={selectedEvent.slug}
         eventName={selectedEvent.name}
-        prizes={selectedEvent.prizeCategories.map((prize) => ({
-          id: prize.id,
-          name: prize.name,
-          quantity: prize.quantity,
-          animationPreset: prize.animationPreset,
-          animationSpeed: prize.animationSpeed,
-          boardSettings: resolvePrizeBoardSettings(prize.boardSettings),
-        }))}
-        sessions={sessions.map((session) => ({
+        prize={{
+          id: simplePrize.id,
+          name: simplePrize.name,
+          quantity: simplePrize.quantity,
+          animationPreset: simplePrize.animationPreset,
+          animationSpeed: simplePrize.animationSpeed,
+          boardSettings: resolvePrizeBoardSettings(simplePrize.boardSettings),
+        }}
+        session={{
           id: session.id,
           name: session.name,
           prizeCategoryId: session.prizeCategoryId,
-          prizeName: session.prizeCategory.name,
+          prizeName: simplePrize.name,
           plannedWinnerCount: session.plannedWinnerCount,
           actualWinnerCount: session.actualWinnerCount,
           gridItemCount: session.gridItemCount,
@@ -120,19 +141,14 @@ export default async function SimpleLuckyDrawPage({ searchParams }: { searchPara
             status: winner.status,
             notes: winner.notes,
           })),
-        }))}
+        }}
         initialDesignWidth={luckyScreen?.designWidth ?? 1920}
         initialDesignHeight={luckyScreen?.designHeight ?? 1080}
-        createSessionAction={simpleCreateDrawSessionAction}
-        rollAction={simpleRollRandomWinnerBatchAction}
+        addWinnerAction={simpleAddWinningNumberAction}
+        editWinnerAction={simpleEditWinningNumberAction}
         updateBoardSettingsAction={simpleUpdateBoardSettingsAction}
-        revealNextAction={simpleRevealNextWinnerAction}
         resetDrawAction={simpleResetDrawAction}
-        validateAction={simpleValidateWinnerAction}
         deleteAction={simpleDeleteWinnerAction}
-        invalidateAction={simpleInvalidateWinnerAction}
-        redrawAction={simpleRedrawWinnerRandomAction}
-        cancelPendingAction={simpleCancelPendingRollAction}
       />
     </div>
   );

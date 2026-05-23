@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
+import { withBasePath } from "@/lib/public-path";
 import type { AuctionDisplayEnvelope } from "@/modules/shared/types/contracts";
 import { formatCurrency } from "@/modules/shared/utils/formatters";
 
@@ -50,7 +51,7 @@ export function AuctionDisplayContent({ state }: { state: AuctionDisplayEnvelope
             </div>
             {state.lotImageUrl ? (
               <div className="overflow-hidden rounded-[1.6rem] border border-white/10 bg-white/[0.03]">
-                <img src={state.lotImageUrl} alt={state.lotTitle ?? "Auction lot"} className="h-full min-h-56 w-full object-cover" />
+                <img src={withBasePath(state.lotImageUrl)} alt={state.lotTitle ?? "Auction lot"} className="h-full min-h-56 w-full object-cover" />
               </div>
             ) : null}
           </div>
