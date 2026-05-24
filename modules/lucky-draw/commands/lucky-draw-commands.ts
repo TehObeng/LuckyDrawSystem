@@ -2093,4 +2093,62 @@ export async function clearLuckyDrawDisplay(eventId: string, actor: string) {
   return state;
 }
 
+export async function invalidateSimpleDrawWinners(input: z.input<typeof drawSessionOnlySchema>, actor: string) {
+  const payload = drawSessionOnlySchema.parse(input);
+
+  return prisma.$transaction(async (tx) => {
+    const session = await tx.drawSession.findUniqueOrThrow({
+      where: { id: payload.drawSessionId },
+    });
+
+    const updated = await tx.winner.updateMany({
+      where: { drawSessionId: session.id },
+      data: { status: "invalid" },
+    });
+
+    await tx.drawSession.update({
+      where: { id: session.id },
+      data: {
+        actualWinnerCount: 0,
+        lastRevealOrder: 0,
+        revision: { increment: 1 },
+        status: "draft",
+      },
+    });
+
+    const event = await tx.event.findUniqueOrThrow({
+      where: { id: session.eventId },
+      include: { defaultTheme: true },
+    });
+
+    const screen = await ensurePrimaryDisplayScreen(tx, {
+      eventId: event.id,
+      eventSlug: event.slug,
+      moduleType: "lucky_draw",
+      themePresetId: event.defaultThemeId,
+    });
+
+    const state = buildIdleLuckyDrawDisplay({
+      eventId: event.id,
+      eventSlug: event.slug,
+      screenKey: screen.screenKey,
+      displayMode: screen.displayMode,
+      theme: event.defaultTheme,
+    });
+
+    await publishDisplayState(tx, { ...state, scene: "idle" });
+
+    await audit(tx, {
+      eventId: event.id,
+      actionType: "display_published",
+      actor,
+      targetType: "draw_session",
+      targetId: session.id,
+      payload: { action: "invalidate_simple_draw_winners", invalidatedCount: updated.count },
+    });
+
+    return { ...state, scene: "idle" };
+  });
+}
+
 export type { LuckyDrawDisplayEnvelope };

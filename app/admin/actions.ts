@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { createAuctionLot, createAuctionSession, cueAuctionLot, clearAuctionDisplay, markLotPassed, markLotSold, parseBidAmount, placeBid, undoLastBid } from "@/modules/auction/commands/auction-commands";
-import { cancelPendingRoll, clearLuckyDrawDisplay, createDrawSession, createPrizeCategory, deleteDrawSession, deletePrizeCategory, deleteWinner, drawRandomWinner, editWinnerTicket, invalidateWinner, redrawWinner, redrawWinnerRandom, replayLuckyDrawAnimation, resetSimpleDrawSession, revealNextDraftWinner, revealWinner, rollRandomWinnerBatch, undoLastReveal, updateDrawSession, updatePrizeBoardSettings, updatePrizeCategory, updateSimpleDrawBoardSettings, validateWinner } from "@/modules/lucky-draw/commands/lucky-draw-commands";
+import { cancelPendingRoll, clearLuckyDrawDisplay, createDrawSession, createPrizeCategory, deleteDrawSession, deletePrizeCategory, deleteWinner, drawRandomWinner, editWinnerTicket, invalidateSimpleDrawWinners, invalidateWinner, redrawWinner, redrawWinnerRandom, replayLuckyDrawAnimation, resetSimpleDrawSession, revealNextDraftWinner, revealWinner, rollRandomWinnerBatch, undoLastReveal, updateDrawSession, updatePrizeBoardSettings, updatePrizeCategory, updateSimpleDrawBoardSettings, validateWinner } from "@/modules/lucky-draw/commands/lucky-draw-commands";
 import { archiveEvent, createEvent, createMediaAssetRecord, createThemePreset, updateEvent, updateEventSettings, updateMediaAssetRecord, updateThemePreset } from "@/modules/shared/commands/platform-commands";
 import { publishMasterDisplaySelection } from "@/modules/shared/services/display-state-service";
 import { importAuctionLotsFromCsv, importTicketPoolFromCsv } from "@/modules/shared/services/import-export-service";
@@ -755,6 +755,74 @@ export async function simpleCancelPendingRollAction(formData: FormData) {
     );
 
     return "Pending rolling cards cancelled.";
+  }, { fallbackPath: "/admin/simple-lucky-draw" });
+}
+
+export async function simpleBulkDrawNumbersAction(formData: FormData) {
+  return runInlineAdminAction(async (operator) => {
+    const drawSessionId = getString(formData, "drawSessionId");
+    const numbersText = getString(formData, "numbers");
+
+    const numbers = numbersText
+      .split(/[\n\r]+/)
+      .map((n) => n.trim())
+      .filter((n) => n.length > 0);
+
+    if (numbers.length === 0) {
+      throw new Error("No numbers provided for import.");
+    }
+
+    const session = await prisma.drawSession.findUniqueOrThrow({
+      where: { id: drawSessionId },
+      select: {
+        id: true,
+        eventId: true,
+        prizeCategoryId: true,
+        actualWinnerCount: true,
+        plannedWinnerCount: true,
+      },
+    });
+
+    // Ensure plannedWinnerCount accommodates all numbers
+    const needed = session.actualWinnerCount + numbers.length;
+    if (session.plannedWinnerCount < needed) {
+      await prisma.drawSession.update({
+        where: { id: session.id },
+        data: { plannedWinnerCount: needed },
+      });
+    }
+
+    let drawnCount = 0;
+    for (const number of numbers) {
+      try {
+        await revealWinner(
+          {
+            eventId: session.eventId,
+            prizeCategoryId: session.prizeCategoryId,
+            drawSessionId: session.id,
+            ticketNumber: number,
+            revealSource: "manual",
+          },
+          operator.displayName,
+        );
+        drawnCount += 1;
+      } catch {
+        // Skip duplicates or invalid numbers silently
+      }
+    }
+
+    return `${drawnCount} of ${numbers.length} numbers drawn.`;
+  }, { fallbackPath: "/admin/simple-lucky-draw" });
+}
+
+export async function simpleClearDisplayAction(formData: FormData) {
+  return runInlineAdminAction(async (operator) => {
+    const drawSessionId = getString(formData, "drawSessionId");
+    if (drawSessionId) {
+      await invalidateSimpleDrawWinners({ drawSessionId }, operator.displayName);
+    }
+    await clearLuckyDrawDisplay(getString(formData, "eventId"), operator.displayName);
+    return "Screen cleared. Drawn numbers invalidated and excluded from redraw.";
   }, { fallbackPath: "/admin/simple-lucky-draw" });
 }
 

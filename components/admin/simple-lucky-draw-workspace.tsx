@@ -2,13 +2,14 @@
 
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, ExternalLink, Pencil, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
+import { Copy, ExternalLink, Pencil, Plus, RotateCcw, Save, Trash2, Upload, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Surface, SurfaceCopy, SurfaceTitle } from "@/components/ui/surface";
+import { Textarea } from "@/components/ui/textarea";
 import { withBasePath } from "@/lib/public-path";
 import { defaultPrizeBoardSettings, type LuckyDrawAnimationPreset, type PrizeBoardSettings } from "@/modules/shared/types/contracts";
 
@@ -58,10 +59,11 @@ interface SimpleLuckyDrawWorkspaceProps {
   session: SimpleSession;
   initialDesignWidth: number;
   initialDesignHeight: number;
-  addWinnerAction: (formData: FormData) => Promise<InlineActionResult>;
   editWinnerAction: (formData: FormData) => Promise<InlineActionResult>;
+  addWinnerAction: (formData: FormData) => Promise<InlineActionResult>;
   updateBoardSettingsAction: (formData: FormData) => Promise<InlineActionResult>;
   resetDrawAction: (formData: FormData) => Promise<InlineActionResult>;
+  clearDisplayAction: (formData: FormData) => Promise<InlineActionResult>;
   deleteAction: (formData: FormData) => Promise<InlineActionResult>;
 }
 
@@ -148,10 +150,11 @@ export function SimpleLuckyDrawWorkspace({
   session,
   initialDesignWidth,
   initialDesignHeight,
-  addWinnerAction,
   editWinnerAction,
+  addWinnerAction,
   updateBoardSettingsAction,
   resetDrawAction,
+  clearDisplayAction,
   deleteAction,
 }: SimpleLuckyDrawWorkspaceProps) {
   const router = useRouter();
@@ -171,9 +174,9 @@ export function SimpleLuckyDrawWorkspace({
   const [animationSpeed, setAnimationSpeed] = useState(prize.animationSpeed ?? 1);
   const [boardSettings, setBoardSettings] = useState<PrizeBoardSettings>(prize.boardSettings ?? defaultPrizeBoardSettings);
   const [numberPrefix, setNumberPrefix] = useState(boardSettings.numberPrefix ?? "");
-  const [rangeStart, setRangeStart] = useState(boardSettings.numberRangeStart ?? 1);
-  const [rangeEnd, setRangeEnd] = useState(boardSettings.numberRangeEnd ?? 999);
   const [rangePadLength, setRangePadLength] = useState(boardSettings.numberPadLength ?? 3);
+  const [poolNumbers, setPoolNumbers] = useState<string[]>([]);
+  const [bulkImportText, setBulkImportText] = useState("");
   const [editingWinnerId, setEditingWinnerId] = useState<string | null>(null);
   const [editingNumber, setEditingNumber] = useState("");
   const [submittingKey, setSubmittingKey] = useState<string | null>(null);
@@ -221,8 +224,8 @@ export function SimpleLuckyDrawWorkspace({
       cleanCardWidth: boardSettings.cleanCardWidth,
       cleanCardHeight: boardSettings.cleanCardHeight,
       numberPrefix,
-      numberRangeStart: rangeStart,
-      numberRangeEnd: rangeEnd,
+      numberRangeStart: boardSettings.numberRangeStart,
+      numberRangeEnd: boardSettings.numberRangeEnd,
       numberPadLength: rangePadLength,
       fontFamily: boardSettings.fontFamily,
       winnerLabelFontSize: boardSettings.winnerLabelFontSize,
@@ -246,7 +249,7 @@ export function SimpleLuckyDrawWorkspace({
       rollingNumberColor: boardSettings.rollingNumberColor,
       waitingTextColor: boardSettings.waitingTextColor,
     }),
-    [boardSettings, numberPrefix, rangeEnd, rangePadLength, rangeStart],
+    [boardSettings, numberPrefix, rangePadLength],
   );
 
   const runInlineAction = useCallback(
@@ -281,43 +284,35 @@ export function SimpleLuckyDrawWorkspace({
     setBoardSettings((current) => ({ ...current, [key]: value }));
   }
 
-  function formatNumber(value: string | number) {
-    const rawValue = String(value).trim();
-    const paddedValue = /^\d+$/.test(rawValue) ? rawValue.padStart(Math.max(0, rangePadLength), "0") : rawValue;
-    return `${numberPrefix.trim()}${paddedValue}`;
+  function handleBulkImport() {
+    const rawLines = bulkImportText
+      .split(/[\n\r]+/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+
+    if (rawLines.length === 0) {
+      setStatus({ type: "error", message: "Paste at least one number (one per line)." });
+      return;
+    }
+
+    const normalized = rawLines.map((line) => {
+      const padded = /^\d+$/.test(line) ? line.padStart(Math.max(0, rangePadLength), "0") : line;
+      return `${numberPrefix.trim()}${padded}`;
+    });
+
+    setPoolNumbers(normalized);
+    setStatus({ type: "success", message: `${normalized.length} number(s) imported to pool.` });
   }
 
-  async function handleDrawRandom(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const start = Math.trunc(rangeStart);
-    const end = Math.trunc(rangeEnd);
-    const total = end - start + 1;
-
-    if (!Number.isFinite(start) || !Number.isFinite(end) || total < 1) {
-      setStatus({ type: "error", message: "Drawable range must have an end value greater than or equal to the start value." });
+  async function handleDrawOne() {
+    if (poolNumbers.length === 0) {
+      setStatus({ type: "error", message: "No numbers in pool. Import numbers first." });
       return;
     }
 
-    if (total > 1_000_000) {
-      setStatus({ type: "error", message: "Drawable range is too large. Use a range up to 1,000,000 numbers." });
-      return;
-    }
+    const pickIndex = Math.floor(Math.random() * poolNumbers.length);
+    const ticketNumber = poolNumbers[pickIndex];
 
-    const existingNumbers = new Set(visibleWinners.map((winner) => winner.ticketNumber.toUpperCase()));
-    const availableNumbers: string[] = [];
-    for (let value = start; value <= end; value += 1) {
-      const candidate = formatNumber(value).toUpperCase();
-      if (!existingNumbers.has(candidate)) {
-        availableNumbers.push(candidate);
-      }
-    }
-
-    if (availableNumbers.length === 0) {
-      setStatus({ type: "error", message: "All numbers in this drawable range have already been drawn." });
-      return;
-    }
-
-    const ticketNumber = availableNumbers[Math.floor(Math.random() * availableNumbers.length)];
     const saveSettingsResult = await updateBoardSettingsAction(
       createFormData({
         eventId,
@@ -335,13 +330,27 @@ export function SimpleLuckyDrawWorkspace({
       return;
     }
 
-    await runInlineAction(
-      "draw-random",
+    const result = await runInlineAction(
+      "draw-one",
       addWinnerAction,
       createFormData({
         drawSessionId: session.id,
         ticketNumber,
       }),
+    );
+
+    if (result.ok) {
+      setPoolNumbers((prev) => prev.filter((_, i) => i !== pickIndex));
+    }
+  }
+
+  async function handleClearDisplay() {
+    const confirmed = window.confirm("Clear the display and invalidate all drawn numbers? Pool will be preserved.");
+    if (!confirmed) return;
+    await runInlineAction(
+      "clear-display",
+      clearDisplayAction,
+      createFormData({ eventId, drawSessionId: session.id }),
     );
   }
 
@@ -597,14 +606,23 @@ export function SimpleLuckyDrawWorkspace({
           <Surface className="min-w-0 space-y-5 p-6">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <SurfaceTitle>Random Draw</SurfaceTitle>
-                <SurfaceCopy>Set the drawable number range, then pull one random winning number. Existing winners are excluded automatically.</SurfaceCopy>
+                <SurfaceTitle>Bulk Import & Draw</SurfaceTitle>
+                <SurfaceCopy>Paste numbers one per line, import them into the pool, then draw one at a time. Drawn numbers are removed from the pool. Clear Display does not reset the pool.</SurfaceCopy>
               </div>
-              <Badge variant="accent">{visibleWinners.length} drawn</Badge>
+              <Badge variant="accent">{poolNumbers.length} in pool</Badge>
             </div>
 
-            <form className="space-y-4" onSubmit={handleDrawRandom}>
-              <div className="grid gap-4 rounded-[1.5rem] border border-white/10 bg-white/[0.02] p-4 md:grid-cols-2">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Numbers (one per line)</Label>
+                <Textarea
+                  rows={6}
+                  value={bulkImportText}
+                  onChange={(event) => setBulkImportText(event.target.value)}
+                  placeholder="Paste numbers here, one per line..."
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
                 <div className="space-y-2">
                   <Label>Number format prefix</Label>
                   <Input value={numberPrefix} onChange={(event) => setNumberPrefix(event.target.value)} placeholder="Example: A-, VIP, SB" />
@@ -613,29 +631,50 @@ export function SimpleLuckyDrawWorkspace({
                   <Label>Zero padding</Label>
                   <Input type="number" min={0} max={12} value={rangePadLength} onChange={(event) => setRangePadLength(Number(event.target.value))} />
                 </div>
-                <div className="space-y-2">
-                  <Label>Drawable range start</Label>
-                  <Input type="number" min={0} value={rangeStart} onChange={(event) => setRangeStart(Number(event.target.value))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Drawable range end</Label>
-                  <Input type="number" min={0} value={rangeEnd} onChange={(event) => setRangeEnd(Number(event.target.value))} />
-                </div>
-                <p className="md:col-span-2 text-xs text-slate-500">
-                  Range preview: {formatNumber(rangeStart)} to {formatNumber(rangeEnd)}. These are drawable candidates, not pre-added winners.
-                </p>
+              </div>
+              <p className="text-xs text-slate-500">
+                Prefix and padding are applied on import. Example: prefix &quot;A-&quot; + pad 3 + &quot;42&quot; = &quot;A-042&quot;.
+              </p>
+
+              <div className="flex flex-wrap gap-3">
+                <Button type="button" variant="secondary" onClick={handleBulkImport}>
+                  <Upload className="size-4" />
+                  Bulk Import to Pool
+                </Button>
+                <Button
+                  type="button"
+                  size="lg"
+                  disabled={poolNumbers.length === 0 || submittingKey === "draw-one"}
+                  onClick={() => void handleDrawOne()}
+                >
+                  <Plus className="size-5" />
+                  {submittingKey === "draw-one" ? "Drawing..." : "Draw One"}
+                </Button>
               </div>
 
-              <Button type="submit" size="lg" className="w-full" disabled={submittingKey === "draw-random"}>
-                <Plus className="size-5" />
-                {submittingKey === "draw-random" ? "Drawing..." : "Draw Random Winning Number"}
-              </Button>
-            </form>
+              {poolNumbers.length > 0 && (
+                <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.02] max-h-32 overflow-auto p-3">
+                  <div className="text-xs text-slate-400 mb-1">Pool preview:</div>
+                  <div className="flex flex-wrap gap-1">
+                    {poolNumbers.slice(0, 30).map((num, i) => (
+                      <span key={i} className="rounded-lg border border-white/10 px-2 py-0.5 text-xs text-slate-300 font-mono">{num}</span>
+                    ))}
+                    {poolNumbers.length > 30 && (
+                      <span className="text-xs text-slate-500 self-center">+{poolNumbers.length - 30} more</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="flex flex-wrap gap-2 border-t border-white/10 pt-5">
               <Button type="button" variant="danger" disabled={visibleWinners.length === 0 || submittingKey === "reset-draw"} onClick={() => void handleResetDraw()}>
                 <RotateCcw className="size-4" />
                 {submittingKey === "reset-draw" ? "Resetting..." : "Reset Draw Screen"}
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => void handleClearDisplay()}>
+                <X className="size-4" />
+                Clear Display
               </Button>
             </div>
           </Surface>

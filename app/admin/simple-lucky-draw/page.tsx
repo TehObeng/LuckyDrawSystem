@@ -7,6 +7,7 @@ import {
   simpleEditWinningNumberAction,
   simpleResetDrawAction,
   simpleUpdateBoardSettingsAction,
+  simpleClearDisplayAction,
 } from "@/app/admin/actions";
 import { prisma } from "@/lib/prisma";
 import { defaultPrizeBoardSettings, prizeBoardSettingsSchema } from "@/modules/shared/types/contracts";
@@ -148,6 +149,7 @@ export default async function SimpleLuckyDrawPage({ searchParams }: { searchPara
         editWinnerAction={simpleEditWinningNumberAction}
         updateBoardSettingsAction={simpleUpdateBoardSettingsAction}
         resetDrawAction={simpleResetDrawAction}
+        clearDisplayAction={simpleClearDisplayAction}
         deleteAction={simpleDeleteWinnerAction}
       />
     </div>
